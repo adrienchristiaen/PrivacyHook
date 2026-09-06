@@ -28,7 +28,8 @@ from __future__ import annotations
 import json
 import os
 import threading
-from collections import Counter
+import time
+from collections import Counter, defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -40,6 +41,29 @@ _decision_counts: Counter[tuple[str, str, str]] = Counter()  # (action, tool, te
 
 _policy_cache: dict = {"mtime": None, "version": "", "rules_json": []}
 _policy_cache_lock = threading.Lock()
+
+_EVENTS_RATE_WINDOW_SECONDS = 60.0
+_rate_limit_lock = threading.Lock()
+_rate_limit_hits: dict[str, deque] = defaultdict(deque)
+
+
+def _events_rate_limit() -> int:
+    return int(os.environ.get("HOLDTHEDOOR_CONTROLPLANE_EVENTS_RATE_LIMIT", "60"))
+
+
+def _rate_limited(client_ip: str) -> bool:
+    """Sliding-window limiter: at most _events_rate_limit() POST /v1/events
+    per client IP per minute. Prevents one misbehaving/spammy client from
+    drowning the counters or the server."""
+    now = time.time()
+    with _rate_limit_lock:
+        hits = _rate_limit_hits[client_ip]
+        while hits and now - hits[0] > _EVENTS_RATE_WINDOW_SECONDS:
+            hits.popleft()
+        if len(hits) >= _events_rate_limit():
+            return True
+        hits.append(now)
+        return False
 
 
 def _policy_path() -> Path:
@@ -142,6 +166,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if not self._authorized():
             self._send_json({"error": "unauthorized"}, status=401)
+            return
+        if _rate_limited(self.client_address[0]):
+            self._send_json({"error": "rate limited"}, status=429)
             return
 
         length = int(self.headers.get("Content-Length", "0") or "0")

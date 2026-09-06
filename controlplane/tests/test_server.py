@@ -25,6 +25,7 @@ def running_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     cp_server._policy_cache.update(mtime=None, version="", rules_json=[])
     cp_server._decision_counts.clear()
+    cp_server._rate_limit_hits.clear()
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), cp_server._Handler)
     port = httpd.server_address[1]
@@ -134,3 +135,20 @@ def test_unknown_path_404(running_server):
     base, _ = running_server
     status, _ = _get(f"{base}/nope")
     assert status == 404
+
+
+def test_events_rate_limited_after_threshold(running_server, monkeypatch: pytest.MonkeyPatch):
+    base, _ = running_server
+    monkeypatch.setenv("HOLDTHEDOOR_CONTROLPLANE_EVENTS_RATE_LIMIT", "3")
+
+    for _ in range(3):
+        status, _ = _post(
+            f"{base}/v1/events", {"action": "block", "tool": "Bash", "team": "sec"}, token="test-token",
+        )
+        assert status == 200
+
+    status, body = _post(
+        f"{base}/v1/events", {"action": "block", "tool": "Bash", "team": "sec"}, token="test-token",
+    )
+    assert status == 429
+    assert json.loads(body)["error"] == "rate limited"
