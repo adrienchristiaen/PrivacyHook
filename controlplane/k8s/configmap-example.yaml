@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: holdthedoor-policy
+data:
+  policy.yaml: |
+    - id: no-prod-deploy-from-laptop
+      tool: Bash
+      match_type: command_regex
+      pattern: "deploy.*--env[= ]prod"
+      action: block
+      reason: "prod deploys must go through CI, not an agent on a laptop"

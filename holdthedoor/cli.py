@@ -21,6 +21,7 @@ from pathlib import Path
 from . import settings as S
 from .audit import AuditLog, generate_key
 from .policy import Rule, PolicyEngine, VALID_ACTIONS, VALID_MATCH_TYPES
+from .remote_policy import RemotePolicySource
 from .session import SessionStore, session_db_path, session_root
 from .settings import SUPPORTED_CLIS, detect_cli
 
@@ -164,6 +165,23 @@ def cmd_status(args: argparse.Namespace) -> int:
         if st["hooks"]:
             print(f"  hooks: {DIM(' · '.join(st['hooks']))}")
         print()
+
+    # ── control plane ────────────────────────────────────────────────────────
+    remote = RemotePolicySource()
+    print(BOLD("CONTROL PLANE"))
+    if not remote.configured:
+        print(DIM("  not configured (HOLDTHEDOOR_CONTROLPLANE_URL unset — using local policy.json only)"))
+    else:
+        rules = remote.refresh(ttl_seconds=0)
+        cached = remote._load_cache()
+        age = int(time.time() - cached.get("fetched_at", 0)) if cached else None
+        if rules and age is not None and age <= 2:
+            print(GREEN(f"  ✓ connected") + DIM(f"  {remote.url}  —  {len(rules)} rule(s), synced just now"))
+        elif rules:
+            print(YELLOW(f"  ⚠ cached") + DIM(f"  {remote.url}  —  {len(rules)} rule(s), server unreachable, using last known policy ({age}s old)"))
+        else:
+            print(RED(f"  ✗ unreachable") + DIM(f"  {remote.url}  —  no cached policy available"))
+    print()
 
     # ── session ──────────────────────────────────────────────────────────────
     db = session_db_path()

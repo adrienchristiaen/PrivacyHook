@@ -19,6 +19,10 @@ import secrets
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .remote_policy import RemotePolicySource
 
 VALID_ACTIONS = {"block", "warn", "allow"}
 VALID_MATCH_TYPES = {"command_regex", "path_glob"}
@@ -129,16 +133,25 @@ def _save_raw(path: Path, rules: list[dict]) -> None:
 class PolicyEngine:
     """Loads and evaluates user-defined rules against tool-call events."""
 
-    def __init__(self, path: Path | None = None):
+    def __init__(self, path: Path | None = None, remote: "RemotePolicySource | None" = None):
         self.path = path or default_policy_path()
         raw, self.tampered = _load_raw(self.path)
         self.rules: list[Rule] = [Rule(**r) for r in raw]
+        if remote is None:
+            from .remote_policy import RemotePolicySource
+            remote = RemotePolicySource()
+        self.remote = remote
 
     def evaluate(
         self, tool: str, *, command: str | None = None, path_str: str | None = None
     ) -> tuple[str, Rule | None]:
-        """Return (action, rule): action is 'block', 'warn', or 'allow'."""
-        for rule in self.rules:
+        """Return (action, rule): action is 'block', 'warn', or 'allow'.
+
+        Remote (control-plane) rules are checked before local ones — a
+        security team's centrally-managed policy is authoritative and can't
+        be overridden by a developer's local policy.json.
+        """
+        for rule in [*self.remote.refresh(), *self.rules]:
             if not rule.applies_to(tool):
                 continue
             target = command if rule.match_type == "command_regex" else path_str

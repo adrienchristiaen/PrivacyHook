@@ -1,0 +1,24 @@
+# Security team's centrally-managed policy.
+# Same shape as `holdthedoor.policy.Rule`: id, tool, match_type, pattern, action, reason.
+# Evaluated first-match-wins, and authoritative over any developer's local policy.json.
+
+- id: no-prod-deploy-from-laptop
+  tool: Bash
+  match_type: command_regex
+  pattern: "deploy.*--env[= ]prod"
+  action: block
+  reason: "prod deploys must go through CI, not an agent on a laptop"
+
+- id: no-force-push-main
+  tool: Bash
+  match_type: command_regex
+  pattern: "git push.*--force.*(main|master)"
+  action: block
+  reason: "force-push to main/master is blocked org-wide"
+
+- id: warn-on-terraform-apply
+  tool: Bash
+  match_type: command_regex
+  pattern: "terraform apply"
+  action: warn
+  reason: "infra changes via agent should be reviewed before applying"

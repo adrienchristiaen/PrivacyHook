@@ -424,7 +424,8 @@ pytest -q   # 122 passed
 
 ## License
 
-MIT — see [LICENSE](LICENSE). A future, more advanced dashboard/engine component is
-planned under BSL-1.1 (converting to Apache-2.0 after 4 years) — see
-[LICENSING.md](LICENSING.md) for the full strategy. Everything in this repository
-today is unaffected and stays MIT.
+MIT — see [LICENSE](LICENSE). The `controlplane/` directory (centralized policy
+server) is separately licensed under BSL-1.1, free to self-host, converting to
+Apache-2.0 in 2030 — see [LICENSING.md](LICENSING.md) and
+[controlplane/LICENSE](controlplane/LICENSE) for the full strategy. Everything
+else in this repository stays MIT.

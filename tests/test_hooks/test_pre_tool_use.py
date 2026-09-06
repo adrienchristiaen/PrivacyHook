@@ -88,6 +88,29 @@ class TestPreToolUse:
         assert decision["decision"] == "block"
         assert decision["reason"]
 
+    def test_no_control_plane_env_is_backward_compatible(self, hook_env):
+        # Regression guard: with no HOLDTHEDOOR_CONTROLPLANE_* vars set, the
+        # hook must behave exactly as before remote policy support existed —
+        # fast, no network attempt, no behavior change.
+        env, ws = hook_env
+        payload = {
+            "session_id": "test",
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls -la"},
+        }
+        parent_env = {k: v for k, v in os.environ.items() if not k.startswith("HOLDTHEDOOR_CONTROLPLANE_")}
+        proc_env = {**parent_env, **env}
+        proc = subprocess.run(
+            [sys.executable, "-m", "holdthedoor.hooks.pre_tool_use"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=proc_env,
+            cwd=str(ws),
+            timeout=5,
+        )
+        assert proc.returncode == 0
+
     def test_cli_arg_tag_overrides_env_detection(self, hook_env):
         # Codex CLI sets no identifying env var at hook runtime, so the
         # `--cli` arg stamped by settings.py at install time is the only
