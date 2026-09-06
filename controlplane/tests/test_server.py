@@ -122,7 +122,10 @@ def test_events_increments_metrics(running_server):
 
     _, metrics_body = _get(f"{base}/metrics")
     text = metrics_body.decode("utf-8")
-    assert 'holdthedoor_policy_decisions_total{action="block",tool="Bash",team="sec"} 1' in text
+    assert (
+        'holdthedoor_policy_decisions_total{tenant="default",action="block",tool="Bash",team="sec"} 1'
+        in text
+    )
 
 
 def test_metrics_no_auth_required(running_server):
@@ -135,6 +138,70 @@ def test_unknown_path_404(running_server):
     base, _ = running_server
     status, _ = _get(f"{base}/nope")
     assert status == 404
+
+
+@pytest.fixture
+def multi_tenant_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    policy_a = tmp_path / "a.yaml"
+    policy_a.write_text(
+        "- id: a-rule\n  tool: Bash\n  match_type: command_regex\n  pattern: rm -rf\n  action: block\n",
+        encoding="utf-8",
+    )
+    policy_b = tmp_path / "b.yaml"
+    policy_b.write_text(
+        "- id: b-rule\n  tool: Bash\n  match_type: command_regex\n  pattern: curl\n  action: warn\n",
+        encoding="utf-8",
+    )
+    tenants_path = tmp_path / "tenants.yaml"
+    tenants_path.write_text(
+        f"- id: acme\n  token: token-a\n  policy_path: {policy_a}\n"
+        f"- id: globex\n  token: token-b\n  policy_path: {policy_b}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("HOLDTHEDOOR_CONTROLPLANE_TOKEN", raising=False)
+    monkeypatch.delenv("HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH", raising=False)
+    monkeypatch.setenv("HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH", str(tenants_path))
+
+    cp_server._policy_cache.clear()
+    cp_server._decision_counts.clear()
+    cp_server._rate_limit_hits.clear()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), cp_server._Handler)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+def test_multi_tenant_policy_isolation(multi_tenant_server):
+    base = multi_tenant_server
+    status_a, body_a = _get(f"{base}/v1/policy", token="token-a")
+    status_b, body_b = _get(f"{base}/v1/policy", token="token-b")
+    assert status_a == 200 and status_b == 200
+    assert json.loads(body_a)["rules"][0]["id"] == "a-rule"
+    assert json.loads(body_b)["rules"][0]["id"] == "b-rule"
+
+
+def test_multi_tenant_unknown_token_rejected(multi_tenant_server):
+    base = multi_tenant_server
+    status, _ = _get(f"{base}/v1/policy", token="not-a-real-token")
+    assert status == 401
+
+
+def test_multi_tenant_metrics_isolation(multi_tenant_server):
+    base = multi_tenant_server
+    _post(f"{base}/v1/events", {"action": "block", "tool": "Bash", "team": "x"}, token="token-a")
+    _post(f"{base}/v1/events", {"action": "warn", "tool": "Bash", "team": "y"}, token="token-b")
+
+    _, metrics_body = _get(f"{base}/metrics")
+    text = metrics_body.decode("utf-8")
+    assert 'tenant="acme",action="block",tool="Bash",team="x"' in text
+    assert 'tenant="globex",action="warn",tool="Bash",team="y"' in text
 
 
 def test_events_rate_limited_after_threshold(running_server, monkeypatch: pytest.MonkeyPatch):

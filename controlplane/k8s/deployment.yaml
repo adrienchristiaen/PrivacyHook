@@ -18,6 +18,7 @@ spec:
           ports:
             - containerPort: 8957
           env:
+            # Single-tenant (default): one team, one policy, one token.
             - name: HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH
               value: /etc/holdthedoor/policy.yaml
             - name: HOLDTHEDOOR_CONTROLPLANE_TOKEN
@@ -25,10 +26,20 @@ spec:
                 secretKeyRef:
                   name: holdthedoor-controlplane-token
                   key: token
+            # Multi-tenant (hosting several distinct clients): comment out
+            # the two vars above, uncomment this one, and mount each
+            # tenant's policy.yaml + tenants.yaml per k8s/tenants-example.yaml.
+            # - name: HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH
+            #   value: /etc/holdthedoor/tenants.yaml
           volumeMounts:
             - name: policy
               mountPath: /etc/holdthedoor
               readOnly: true
+            # Multi-tenant: also mount the tenants Secret, e.g.
+            # - name: tenants
+            #   mountPath: /etc/holdthedoor/tenants.yaml
+            #   subPath: tenants.yaml
+            #   readOnly: true
           readinessProbe:
             httpGet:
               path: /healthz

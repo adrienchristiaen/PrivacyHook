@@ -1,0 +1,23 @@
+# Example multi-tenant config for hosting the control plane on behalf of
+# several distinct clients. Each tenant gets its own token and its own
+# policy.yaml — a leaked/compromised token only ever exposes that one
+# tenant's rules and metrics, never another client's.
+#
+# This is a Secret, not a ConfigMap: it carries bearer tokens.
+#
+# Each policy_path below must be mounted into the pod (e.g. one ConfigMap
+# per tenant, each mounted at a distinct subpath) — see deployment.yaml's
+# commented-out multi-tenant block for the mount pattern.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: holdthedoor-controlplane-tenants
+type: Opaque
+stringData:
+  tenants.yaml: |
+    - id: acme
+      token: replace-me-acme-token
+      policy_path: /etc/holdthedoor/tenants/acme/policy.yaml
+    - id: globex
+      token: replace-me-globex-token
+      policy_path: /etc/holdthedoor/tenants/globex/policy.yaml

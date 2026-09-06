@@ -35,11 +35,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .policy_yaml import PolicyYamlError, load_policy_yaml, rules_to_json
+from .tenants import Tenant, load_tenants
 
 _counters_lock = threading.Lock()
-_decision_counts: Counter[tuple[str, str, str]] = Counter()  # (action, tool, team)
+_decision_counts: Counter[tuple[str, str, str, str]] = Counter()  # (tenant_id, action, tool, team)
 
-_policy_cache: dict = {"mtime": None, "version": "", "rules_json": []}
+_policy_cache: dict[str, dict] = {}  # tenant_id -> {mtime, version, rules_json}
 _policy_cache_lock = threading.Lock()
 
 _EVENTS_RATE_WINDOW_SECONDS = 60.0
@@ -66,29 +67,34 @@ def _rate_limited(client_ip: str) -> bool:
         return False
 
 
-def _policy_path() -> Path:
-    override = os.environ.get("HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH")
-    if not override:
-        raise RuntimeError("HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH must be set")
-    return Path(override)
+def _tenant_for_request(headers) -> Tenant | None:
+    """Resolve which tenant a request belongs to. Tokens (and thus tenants)
+    are static for the process lifetime, but re-read on every call — same
+    cost as the old single-token env lookup, and keeps tests free to
+    monkeypatch env vars per-request without a stale process-wide cache."""
+    tenants = load_tenants()
+    if not tenants:
+        return None
+    header = headers.get("Authorization", "")
+    presented = header[len("Bearer ") :] if header.startswith("Bearer ") else None
+    for tenant in tenants:
+        if tenant.token is None or tenant.token == presented:
+            return tenant
+    return None
 
 
-def _expected_token() -> str | None:
-    return os.environ.get("HOLDTHEDOOR_CONTROLPLANE_TOKEN") or None
-
-
-def _load_policy() -> tuple[str, list[dict]]:
-    """Re-parse the YAML file only when its mtime changes — cheap enough to
-    check on every request, avoids a filesystem-watch dependency, and fits
-    a ConfigMap-mounted file that changes rarely."""
-    path = _policy_path()
-    mtime = path.stat().st_mtime
+def _load_policy(tenant: Tenant) -> tuple[str, list[dict]]:
+    """Re-parse the tenant's YAML file only when its mtime changes — cheap
+    enough to check on every request, avoids a filesystem-watch dependency,
+    and fits a ConfigMap-mounted file that changes rarely."""
+    mtime = tenant.policy_path.stat().st_mtime
     with _policy_cache_lock:
-        if _policy_cache["mtime"] == mtime:
-            return _policy_cache["version"], _policy_cache["rules_json"]
-        rules, version = load_policy_yaml(path)
+        cached = _policy_cache.get(tenant.id)
+        if cached and cached["mtime"] == mtime:
+            return cached["version"], cached["rules_json"]
+        rules, version = load_policy_yaml(tenant.policy_path)
         rules_json = rules_to_json(rules)
-        _policy_cache.update(mtime=mtime, version=version, rules_json=rules_json)
+        _policy_cache[tenant.id] = {"mtime": mtime, "version": version, "rules_json": rules_json}
         return version, rules_json
 
 
@@ -106,13 +112,6 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _authorized(self) -> bool:
-        expected = _expected_token()
-        if not expected:
-            return True
-        header = self.headers.get("Authorization", "")
-        return header == f"Bearer {expected}"
-
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
 
@@ -121,11 +120,12 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/v1/policy":
-            if not self._authorized():
+            tenant = _tenant_for_request(self.headers)
+            if tenant is None:
                 self._send_json({"error": "unauthorized"}, status=401)
                 return
             try:
-                version, rules_json = _load_policy()
+                version, rules_json = _load_policy(tenant)
             except (PolicyYamlError, OSError, RuntimeError) as exc:
                 self._send_json({"error": str(exc)}, status=500)
                 return
@@ -146,10 +146,10 @@ class _Handler(BaseHTTPRequestHandler):
         ]
         with _counters_lock:
             items = list(_decision_counts.items())
-        for (action, tool, team), count in items:
+        for (tenant_id, action, tool, team), count in items:
             lines.append(
-                'holdthedoor_policy_decisions_total{action="%s",tool="%s",team="%s"} %d'
-                % (action, tool, team, count)
+                'holdthedoor_policy_decisions_total{tenant="%s",action="%s",tool="%s",team="%s"} %d'
+                % (tenant_id, action, tool, team, count)
             )
         body = ("\n".join(lines) + "\n").encode("utf-8")
         self.send_response(200)
@@ -164,7 +164,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        if not self._authorized():
+        tenant = _tenant_for_request(self.headers)
+        if tenant is None:
             self._send_json({"error": "unauthorized"}, status=401)
             return
         if _rate_limited(self.client_address[0]):
@@ -183,7 +184,7 @@ class _Handler(BaseHTTPRequestHandler):
         tool = str(payload.get("tool", "unknown"))
         team = str(payload.get("team", "default"))
         with _counters_lock:
-            _decision_counts[(action, tool, team)] += 1
+            _decision_counts[(tenant.id, action, tool, team)] += 1
         self._send_json({"ok": True})
 
 
