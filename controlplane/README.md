@@ -33,8 +33,16 @@ holdthedoor status   # shows "CONTROL PLANE: connected"
 |---|---|---|---|
 | `/v1/policy` | GET | Bearer token | Serves the current rule set + a content-hash version |
 | `/v1/events` | POST | Bearer token, rate-limited (60/min/IP by default — tune via `HOLDTHEDOOR_CONTROLPLANE_EVENTS_RATE_LIMIT`) | Receives decision metadata (`action`, `tool`, `team`, `rule_id`) — never raw commands/paths/secrets |
-| `/metrics` | GET | none | Prometheus counters, labeled by tenant — point Grafana/Datadog at this, no custom dashboard required |
+| `/metrics` | GET | none | Prometheus counters (`holdthedoor_policy_decisions_total`, labeled `tenant`/`action`/`tool`/`team`) — point Grafana/Datadog at this |
 | `/healthz` | GET | none | k8s liveness/readiness probe |
+
+## Grafana dashboard
+
+`controlplane/grafana-dashboard.json` is a ready-to-import dashboard for
+the `/metrics` endpoint above: decision rate by action, blocked calls by
+tool, decisions by team, and a 24h total — nothing to build yourself.
+Import it in Grafana (Dashboards → New → Import), point it at your
+Prometheus datasource, and it renders against your existing scrape.
 
 ## TLS
 

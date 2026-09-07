@@ -1,0 +1,82 @@
+{
+  "title": "holdthedoor control plane",
+  "uid": "holdthedoor-controlplane",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(holdthedoor_policy_decisions_total, tenant)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Policy decisions rate, by action",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(holdthedoor_policy_decisions_total{tenant=~\"$tenant\"}[5m])) by (action)",
+          "legendFormat": "{{action}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Blocked, last 24h — by tool",
+      "type": "barchart",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(holdthedoor_policy_decisions_total{tenant=~\"$tenant\",action=\"block\"}[24h])) by (tool)",
+          "legendFormat": "{{tool}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Decisions, last 24h — by team",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(holdthedoor_policy_decisions_total{tenant=~\"$tenant\"}[24h])) by (team, action)",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Total decisions, last 24h",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(holdthedoor_policy_decisions_total{tenant=~\"$tenant\"}[24h]))"
+        }
+      ]
+    }
+  ]
+}
