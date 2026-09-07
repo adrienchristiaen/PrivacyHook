@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.remote_policy import RemotePolicySource
+from privacyhook.remote_policy import RemotePolicySource
 
 
 @pytest.fixture

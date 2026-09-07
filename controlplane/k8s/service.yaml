@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: holdthedoor-controlplane
+  name: privacyhook-controlplane
 spec:
   selector:
-    app: holdthedoor-controlplane
+    app: privacyhook-controlplane
   ports:
     - port: 80
       targetPort: 8957

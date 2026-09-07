@@ -36,8 +36,8 @@ def hook_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     (workspace / "src" / "app.py").write_text("x = 1\n")
     return ({
         "CLAUDE_SESSION_ID": "hook-test",
-        "HOLDTHEDOOR_SESSION_ROOT": str(tmp_path / "sess"),
-        "HOLDTHEDOOR_AUDIT_DIR": str(tmp_path / "audit"),
+        "PRIVACYHOOK_SESSION_ROOT": str(tmp_path / "sess"),
+        "PRIVACYHOOK_AUDIT_DIR": str(tmp_path / "audit"),
         "PYTHONPATH": str(Path(__file__).parent.parent.parent),
     }, workspace)
 
@@ -46,14 +46,14 @@ class TestPreToolUse:
     def test_blocks_env_read(self, hook_env):
         env, ws = hook_env
         payload = json.loads((FIX / "pre_read_env.json").read_text())
-        rc, out, err = _run_hook("holdthedoor.hooks.pre_tool_use", payload, env, cwd=ws)
+        rc, out, err = _run_hook("privacyhook.hooks.pre_tool_use", payload, env, cwd=ws)
         assert rc == 2, f"expected exit 2, got {rc}: stderr={err}"
         assert ".env" in err or "sensitive" in err.lower()
 
     def test_allows_safe_read(self, hook_env):
         env, ws = hook_env
         payload = json.loads((FIX / "pre_read_safe.json").read_text())
-        rc, _, err = _run_hook("holdthedoor.hooks.pre_tool_use", payload, env, cwd=ws)
+        rc, _, err = _run_hook("privacyhook.hooks.pre_tool_use", payload, env, cwd=ws)
         assert rc == 0, f"unexpected block: {err}"
 
     def test_blocks_bash_cat_env(self, hook_env):
@@ -63,7 +63,7 @@ class TestPreToolUse:
             "tool_name": "Bash",
             "tool_input": {"command": "cat .env"},
         }
-        rc, _, err = _run_hook("holdthedoor.hooks.pre_tool_use", payload, env, cwd=ws)
+        rc, _, err = _run_hook("privacyhook.hooks.pre_tool_use", payload, env, cwd=ws)
         assert rc == 2
         assert "sensitive" in err.lower() or ".env" in err
 
@@ -74,7 +74,7 @@ class TestPreToolUse:
             "tool_name": "Bash",
             "tool_input": {"command": "ls -la"},
         }
-        rc, _, _ = _run_hook("holdthedoor.hooks.pre_tool_use", payload, env, cwd=ws)
+        rc, _, _ = _run_hook("privacyhook.hooks.pre_tool_use", payload, env, cwd=ws)
         assert rc == 0
 
     def test_block_also_emits_codex_style_json_decision(self, hook_env):
@@ -82,14 +82,14 @@ class TestPreToolUse:
         # {"decision": "block", ...} rather than relying on exit code alone.
         env, ws = hook_env
         payload = json.loads((FIX / "pre_read_env.json").read_text())
-        rc, out, _ = _run_hook("holdthedoor.hooks.pre_tool_use", payload, env, cwd=ws)
+        rc, out, _ = _run_hook("privacyhook.hooks.pre_tool_use", payload, env, cwd=ws)
         assert rc == 2
         decision = json.loads(out)
         assert decision["decision"] == "block"
         assert decision["reason"]
 
     def test_no_control_plane_env_is_backward_compatible(self, hook_env):
-        # Regression guard: with no HOLDTHEDOOR_CONTROLPLANE_* vars set, the
+        # Regression guard: with no PRIVACYHOOK_CONTROLPLANE_* vars set, the
         # hook must behave exactly as before remote policy support existed —
         # fast, no network attempt, no behavior change.
         env, ws = hook_env
@@ -98,10 +98,10 @@ class TestPreToolUse:
             "tool_name": "Bash",
             "tool_input": {"command": "ls -la"},
         }
-        parent_env = {k: v for k, v in os.environ.items() if not k.startswith("HOLDTHEDOOR_CONTROLPLANE_")}
+        parent_env = {k: v for k, v in os.environ.items() if not k.startswith("PRIVACYHOOK_CONTROLPLANE_")}
         proc_env = {**parent_env, **env}
         proc = subprocess.run(
-            [sys.executable, "-m", "holdthedoor.hooks.pre_tool_use"],
+            [sys.executable, "-m", "privacyhook.hooks.pre_tool_use"],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -119,10 +119,10 @@ class TestPreToolUse:
         env, ws = hook_env
         payload = json.loads((FIX / "pre_read_env.json").read_text())
         rc, _, _ = _run_hook(
-            "holdthedoor.hooks.pre_tool_use", payload, env, cwd=ws, args=["--cli", "codex"],
+            "privacyhook.hooks.pre_tool_use", payload, env, cwd=ws, args=["--cli", "codex"],
         )
         assert rc == 2
-        audit_path = Path(env["HOLDTHEDOOR_AUDIT_DIR"]) / "audit.jsonl"
+        audit_path = Path(env["PRIVACYHOOK_AUDIT_DIR"]) / "audit.jsonl"
         entries = [json.loads(line) for line in audit_path.read_text().splitlines() if line.strip()]
         assert entries
         assert entries[-1]["cli"] == "codex"

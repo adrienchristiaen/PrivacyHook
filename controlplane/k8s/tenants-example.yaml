@@ -11,13 +11,13 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: holdthedoor-controlplane-tenants
+  name: privacyhook-controlplane-tenants
 type: Opaque
 stringData:
   tenants.yaml: |
     - id: acme
       token: replace-me-acme-token
-      policy_path: /etc/holdthedoor/tenants/acme/policy.yaml
+      policy_path: /etc/privacyhook/tenants/acme/policy.yaml
     - id: globex
       token: replace-me-globex-token
-      policy_path: /etc/holdthedoor/tenants/globex/policy.yaml
+      policy_path: /etc/privacyhook/tenants/globex/policy.yaml

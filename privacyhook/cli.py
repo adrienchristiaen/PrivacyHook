@@ -1,9 +1,9 @@
-"""holdthedoor CLI entry point.
+"""privacyhook CLI entry point.
 
 Subcommands:
 
 - install      — register the three hooks in ~/.claude/settings.json
-- uninstall    — strip holdthedoor hooks (leaves user hooks intact)
+- uninstall    — strip privacyhook hooks (leaves user hooks intact)
 - status       — show installed hooks, session dir, recent events
 - reveal TOK   — print the original value for a session token
 - audit        — print the audit log, with --verify to check the HMAC chain
@@ -97,7 +97,7 @@ def _fmt_event(e: dict) -> str:
 
 
 def _exit(msg: str, code: int = 1) -> int:
-    sys.stderr.write(f"holdthedoor: {msg}\n")
+    sys.stderr.write(f"privacyhook: {msg}\n")
     return code
 
 
@@ -132,7 +132,7 @@ def cmd_install(args: argparse.Namespace) -> int:
             print(json.dumps(report["after"], indent=2))
             continue
         if not _confirm(
-            f"register holdthedoor hooks in {report['path']}?", args.yes
+            f"register privacyhook hooks in {report['path']}?", args.yes
         ):
             return _exit("aborted")
         report = S.install(cli=cli, yes=True)
@@ -145,7 +145,7 @@ def cmd_install(args: argparse.Namespace) -> int:
 def cmd_uninstall(args: argparse.Namespace) -> int:
     clis = _resolve_clis(args.cli)
     for cli in clis:
-        if not _confirm(f"remove holdthedoor hooks from {cli}?", args.yes):
+        if not _confirm(f"remove privacyhook hooks from {cli}?", args.yes):
             return _exit("aborted")
         report = S.uninstall(cli=cli, yes=True)
         print(f"[{cli}] removed {report['removed']} hook command(s) from {report['path']}")
@@ -170,7 +170,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     remote = RemotePolicySource()
     print(BOLD("CONTROL PLANE"))
     if not remote.configured:
-        print(DIM("  not configured (HOLDTHEDOOR_CONTROLPLANE_URL unset — using local policy.json only)"))
+        print(DIM("  not configured (PRIVACYHOOK_CONTROLPLANE_URL unset — using local policy.json only)"))
     else:
         rules = remote.refresh(ttl_seconds=0)
         cached = remote._load_cache()
@@ -193,7 +193,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"  {YELLOW(str(len(toks)))} value{'s' if len(toks) != 1 else ''} redacted this session")
             for cat, orig_preview, tok in toks[:5]:
                 masked = orig_preview[:4] + "••••" if len(orig_preview) > 4 else "••••"
-                print(DIM(f"    {tok}  ({cat})  →  holdthedoor reveal '{tok}'"))
+                print(DIM(f"    {tok}  ({cat})  →  privacyhook reveal '{tok}'"))
             if len(toks) > 5:
                 print(DIM(f"    … and {len(toks)-5} more"))
         else:
@@ -319,7 +319,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         print()
         print(DIM("  Active tokens this session:"))
         for tok in session_tokens:
-            print(DIM(f"    {tok}  →  holdthedoor reveal '{tok}'"))
+            print(DIM(f"    {tok}  →  privacyhook reveal '{tok}'"))
 
     print()
     return 0 if (not args.verify or log.verify()[0]) else 1
@@ -339,7 +339,7 @@ def cmd_audit_export(args: argparse.Namespace) -> int:
     since = _parse_date_bound(args.since, end_of_day=False)
     until = _parse_date_bound(args.until, end_of_day=True)
     out_path = Path(args.out) if args.out else Path(
-        f"holdthedoor-audit-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
+        f"privacyhook-audit-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
     )
     n = log.export_csv(out_path, since=since, until=until)
     ok, msg = log.verify()
@@ -408,7 +408,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="holdthedoor",
+        prog="privacyhook",
         description="Privacy-first security layer for Claude Code",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -422,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="target CLI: claude, codex, gemini, all, auto (default: auto-detect)")
     install.set_defaults(func=cmd_install)
 
-    uninstall = sub.add_parser("uninstall", help="remove holdthedoor hooks")
+    uninstall = sub.add_parser("uninstall", help="remove privacyhook hooks")
     uninstall.add_argument("--yes", "-y", action="store_true")
     uninstall.add_argument("--cli", default="auto", choices=cli_choices)
     uninstall.set_defaults(func=cmd_uninstall)
@@ -445,7 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit_export = audit_sub.add_parser("export", help="export audit log as CSV for compliance/audit review")
     audit_export.add_argument("--since", help="YYYY-MM-DD, inclusive")
     audit_export.add_argument("--until", help="YYYY-MM-DD, inclusive")
-    audit_export.add_argument("--out", help="output path (default: holdthedoor-audit-<timestamp>.csv)")
+    audit_export.add_argument("--out", help="output path (default: privacyhook-audit-<timestamp>.csv)")
     audit_export.set_defaults(func=cmd_audit_export)
 
     audit.set_defaults(func=cmd_audit)

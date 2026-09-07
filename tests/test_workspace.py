@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.workspace import WorkspaceGuard
+from privacyhook.workspace import WorkspaceGuard
 
 
 @pytest.fixture

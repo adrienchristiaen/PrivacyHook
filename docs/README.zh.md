@@ -1,4 +1,4 @@
-# holdthedoor
+# privacyhook
 
 > AI 编程 CLI 的隐私安全层。LLM 无法绕过的确定性钩子——密钥被脱敏、敏感文件被屏蔽、提示词被扫描，每一次工具调用都可以由你定义的规则来治理。
 
@@ -33,7 +33,7 @@
 
 ## 为什么
 
-AI 编程 agent 会读取你的文件系统、执行 shell 命令、抓取网页——然后把结果直接喂回 LLM 的上下文。密钥就是这样泄露的：agent 自己推理过程中的一次 `cat .env`、curl 响应里遗留的一个 API key、不小心粘贴进提示词的凭据。基于提示词的指令（"不要读取密钥"）并不是安全边界——LLM 可能被诱导绕过。holdthedoor 运行在模型**之外**，作为纯 Python 的 CLI 钩子，在每次工具调用前后执行。LLM 无法看到、禁用或与钩子谈判——调用要么被放行，要么被拦截。
+AI 编程 agent 会读取你的文件系统、执行 shell 命令、抓取网页——然后把结果直接喂回 LLM 的上下文。密钥就是这样泄露的：agent 自己推理过程中的一次 `cat .env`、curl 响应里遗留的一个 API key、不小心粘贴进提示词的凭据。基于提示词的指令（"不要读取密钥"）并不是安全边界——LLM 可能被诱导绕过。privacyhook 运行在模型**之外**，作为纯 Python 的 CLI 钩子，在每次工具调用前后执行。LLM 无法看到、禁用或与钩子谈判——调用要么被放行，要么被拦截。
 
 ---
 
@@ -55,7 +55,7 @@ AI 编程 agent 会读取你的文件系统、执行 shell 命令、抓取网页
 | **PreToolUse / BeforeTool** | 任何文件/Shell 工具调用之前 | 屏蔽指向敏感路径（`.env`、SSH 密钥、凭据、`*.pem`）的调用，**并**评估你自定义的[策略规则](#tool-call-策略引擎)。退出码 2 = CLI 中止操作。 |
 | **UserPromptSubmit** | 每次用户输入（仅 Claude Code + Codex） | 扫描结构化密钥。默认警告，严格模式下阻止发送。 |
 
-所有事件——脱敏、拦截、警告、策略匹配——都记录在 HMAC 链式审计日志（`~/.local/share/holdthedoor/audit.jsonl`）中。任何篡改都会破坏链式结构，`holdthedoor audit --verify` 可以证明这一点。
+所有事件——脱敏、拦截、警告、策略匹配——都记录在 HMAC 链式审计日志（`~/.local/share/privacyhook/audit.jsonl`）中。任何篡改都会破坏链式结构，`privacyhook audit --verify` 可以证明这一点。
 
 ---
 
@@ -65,32 +65,32 @@ AI 编程 agent 会读取你的文件系统、执行 shell 命令、抓取网页
 
 ```bash
 # 屏蔽任意分支上的 force-push
-holdthedoor policy add --id no-force-push \
+privacyhook policy add --id no-force-push \
   --tool Bash --match 'push.*--force' --action block \
   --reason "force push 需要人工确认"
 
 # 对 node_modules 类路径下的写入仅警告，不屏蔽
-holdthedoor policy add --id watch-writes \
+privacyhook policy add --id watch-writes \
   --tool Write --match-type path_glob --match '*/node_modules/*' \
   --action warn
 
 # 列出当前生效的规则
-holdthedoor policy list
+privacyhook policy list
 
 # 针对当前规则做干跑测试——无副作用
-holdthedoor policy test "git push --force origin main"
+privacyhook policy test "git push --force origin main"
 # → block  (matched rule 'no-force-push': force push 需要人工确认)
 
 # 删除规则
-holdthedoor policy remove no-force-push
+privacyhook policy remove no-force-push
 ```
 
-规则存储在 `~/.local/share/holdthedoor/policy.json` 中，按添加顺序依次评估，第一条匹配的规则生效（无匹配 → allow）。每条规则限定作用于某个工具（`Bash`、`Read`、`Write`、`*` 表示全部，或 `Tool1|Tool2`），匹配方式为：
+规则存储在 `~/.local/share/privacyhook/policy.json` 中，按添加顺序依次评估，第一条匹配的规则生效（无匹配 → allow）。每条规则限定作用于某个工具（`Bash`、`Read`、`Write`、`*` 表示全部，或 `Tool1|Tool2`），匹配方式为：
 
 - `command_regex`（默认）— 针对 shell 命令的正则表达式（`Bash` 调用）
 - `path_glob` — 针对文件路径的 glob 模式（`Read`/`Write`/`Edit` 调用）
 
-每次匹配都会作为 `policy_block` 或 `policy_warn` 写入审计日志，与内置事件一起呈现——`holdthedoor audit` 给出完整视图。
+每次匹配都会作为 `policy_block` 或 `policy_warn` 写入审计日志，与内置事件一起呈现——`privacyhook audit` 给出完整视图。
 
 当内置检查对你的团队来说不够用时，就该用这个机制：锁定危险命令、限制特定路径的写入，或要求对涉及某个敏感目录的操作进行审查——全部以确定性方式执行，不受模型控制。
 
@@ -112,11 +112,11 @@ holdthedoor policy remove no-force-push
 # 安装 pipx（如未安装）
 brew install pipx
 
-# 安装 holdthedoor
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+# 安装 privacyhook
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # 注册钩子（自动检测已安装的 CLI）
-holdthedoor install
+privacyhook install
 ```
 
 ### Linux
@@ -127,10 +127,10 @@ python3 -m pip install --user pipx
 python3 -m pipx ensurepath
 
 # 重启终端后执行：
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # 注册钩子
-holdthedoor install
+privacyhook install
 ```
 
 ### Windows（PowerShell）
@@ -141,10 +141,10 @@ pip install pipx
 pipx ensurepath
 
 # 重启终端后执行：
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # 注册钩子
-holdthedoor install
+privacyhook install
 ```
 
 > **Windows 说明：** 配置文件分别写入 `%APPDATA%\Claude\settings.json`、
@@ -153,10 +153,10 @@ holdthedoor install
 ### 从源码安装（开发模式）
 
 ```bash
-git clone https://github.com/adrienchristiaen/holdthedoor.git
-cd holdthedoor
+git clone https://github.com/adrienchristiaen/privacyhook.git
+cd privacyhook
 pipx install --editable .
-holdthedoor install
+privacyhook install
 ```
 
 ### 指定目标 CLI
@@ -164,10 +164,10 @@ holdthedoor install
 默认情况下 `install` 自动检测已安装的 CLI。也可显式指定：
 
 ```bash
-holdthedoor install --cli claude   # 仅 Claude Code
-holdthedoor install --cli codex    # 仅 Codex CLI
-holdthedoor install --cli gemini   # 仅 Gemini CLI
-holdthedoor install --cli all      # 所有检测到的 CLI
+privacyhook install --cli claude   # 仅 Claude Code
+privacyhook install --cli codex    # 仅 Codex CLI
+privacyhook install --cli gemini   # 仅 Gemini CLI
+privacyhook install --cli all      # 所有检测到的 CLI
 ```
 
 `uninstall` 和 `status` 命令支持相同的 `--cli` 参数。
@@ -177,7 +177,7 @@ holdthedoor install --cli all      # 所有检测到的 CLI
 ## 验证安装
 
 ```bash
-holdthedoor status
+privacyhook status
 ```
 
 预期输出：
@@ -187,7 +187,7 @@ holdthedoor status
   /Users/you/.claude/settings.json
   hooks: PostToolUse · PreToolUse · UserPromptSubmit
 
-SESSION  /tmp/holdthedoor/<session-id>/session.db
+SESSION  /tmp/privacyhook/<session-id>/session.db
   0 values redacted this session
 
 RECENT EVENTS
@@ -202,20 +202,20 @@ RECENT EVENTS
 
 | 命令 | 作用 |
 |---|---|
-| `holdthedoor status [--cli auto\|claude\|codex\|gemini\|all]` | 每个 CLI 的钩子安装状态、session DB 路径、最近 5 条审计事件。 |
-| `holdthedoor reveal <token>` | 返回 session token 对应的原始值（作用域限定在当前 session，随会话结束而失效）。 |
-| `holdthedoor audit [--verify] [--last N] [--json] [--follow]` | 打印审计日志。`--verify` 校验 HMAC 链完整性。`--follow`（`-f`）实时追踪新事件，适合在第二个终端中监控。 |
-| `holdthedoor policy list \| add \| remove \| test` | 管理自定义规则——见 [策略引擎](#tool-call-策略引擎)。 |
-| `holdthedoor uninstall [--cli ...] [--yes]` | 仅移除 holdthedoor 的条目，其他钩子不受影响。 |
+| `privacyhook status [--cli auto\|claude\|codex\|gemini\|all]` | 每个 CLI 的钩子安装状态、session DB 路径、最近 5 条审计事件。 |
+| `privacyhook reveal <token>` | 返回 session token 对应的原始值（作用域限定在当前 session，随会话结束而失效）。 |
+| `privacyhook audit [--verify] [--last N] [--json] [--follow]` | 打印审计日志。`--verify` 校验 HMAC 链完整性。`--follow`（`-f`）实时追踪新事件，适合在第二个终端中监控。 |
+| `privacyhook policy list \| add \| remove \| test` | 管理自定义规则——见 [策略引擎](#tool-call-策略引擎)。 |
+| `privacyhook uninstall [--cli ...] [--yes]` | 仅移除 privacyhook 的条目，其他钩子不受影响。 |
 
 ```
-$ holdthedoor reveal '[WALL:openai_key:1]'
+$ privacyhook reveal '[WALL:openai_key:1]'
 sk-proj-••••••••••••••••••••••••••••••••••••••
 
-$ holdthedoor audit --verify
+$ privacyhook audit --verify
   ✓ chain intact
 
-$ holdthedoor audit --follow
+$ privacyhook audit --follow
 SESSION AUDIT  —  live (Ctrl-C to stop)
 ────────────────────────────────────────────────────────────────
   16:11:02  ✗ block  pre-tool  Read  /you/project/.env  →  filename '.env' is sensitive
@@ -224,9 +224,9 @@ SESSION AUDIT  —  live (Ctrl-C to stop)
 ### 紧急禁用
 
 ```bash
-export HOLDTHEDOOR_DISABLED=1
+export PRIVACYHOOK_DISABLED=1
 # ... 处理含示例密钥的文档等操作 ...
-unset HOLDTHEDOOR_DISABLED
+unset PRIVACYHOOK_DISABLED
 ```
 
 ---
@@ -236,7 +236,7 @@ unset HOLDTHEDOOR_DISABLED
 默认情况下，`UserPromptSubmit` 钩子仅发出警告，不阻止发送。如需阻止：
 
 ```bash
-export HOLDTHEDOOR_STRICT=1
+export PRIVACYHOOK_STRICT=1
 ```
 
 ---
@@ -254,7 +254,7 @@ bash scripts/demo.sh
 ## 架构
 
 ```
-holdthedoor/
+privacyhook/
 ├── patterns.py    # 正则分类 + 敏感文件名/目录/后缀集合
 ├── session.py     # 每会话的 SQLite WAL 存储
 ├── tokenizer.py   # 值 <-> [WALL:cat:N] 双向、幂等转换
@@ -300,7 +300,7 @@ holdthedoor/
 | `private_ip` | RFC 1918 地址段 |
 | `internal_hostname` | `*.internal`、`*.corp`、`*.local` |
 
-如需添加自定义类别，编辑 `holdthedoor/patterns.py` 即可。若要屏蔽其他内容——某条命令、某个路径、整类写操作——改用[策略引擎](#tool-call-策略引擎)，无需改代码。
+如需添加自定义类别，编辑 `privacyhook/patterns.py` 即可。若要屏蔽其他内容——某条命令、某个路径、整类写操作——改用[策略引擎](#tool-call-策略引擎)，无需改代码。
 
 ---
 

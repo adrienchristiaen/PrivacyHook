@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor import settings as S
+from privacyhook import settings as S
 
 
 @pytest.fixture
 def settings_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     p = tmp_path / "settings.json"
-    monkeypatch.setenv("HOLDTHEDOOR_SETTINGS_PATH", str(p))
+    monkeypatch.setenv("PRIVACYHOOK_SETTINGS_PATH", str(p))
     return p
 
 
@@ -40,7 +40,7 @@ class TestInstallFresh:
             for entry in hook_list:
                 for h in entry.get("hooks", []):
                     cmds.append(h["command"])
-        assert all("holdthedoor.hooks." in c for c in cmds)
+        assert all("privacyhook.hooks." in c for c in cmds)
 
 
 class TestInstallExisting:
@@ -65,7 +65,7 @@ class TestInstallExisting:
         post = data["hooks"]["PostToolUse"]
         all_hooks = [h for entry in post for h in entry.get("hooks", [])]
         assert any(h["command"] == "echo user-defined-hook" for h in all_hooks)
-        assert any("holdthedoor.hooks.post_tool_use" in h["command"] for h in all_hooks)
+        assert any("privacyhook.hooks.post_tool_use" in h["command"] for h in all_hooks)
 
     def test_idempotent(self, settings_path: Path):
         S.install(yes=True)
@@ -79,7 +79,7 @@ class TestInstallExisting:
     def test_creates_backup(self, settings_path: Path):
         settings_path.write_text(json.dumps({"theme": "dark"}))
         S.install(yes=True)
-        backup = settings_path.with_suffix(".json.holdthedoor.bak")
+        backup = settings_path.with_suffix(".json.privacyhook.bak")
         assert backup.exists()
         assert json.loads(backup.read_text()) == {"theme": "dark"}
 
@@ -98,7 +98,7 @@ class TestUninstall:
         post = data["hooks"]["PostToolUse"]
         all_hooks = [h for entry in post for h in entry.get("hooks", [])]
         assert any(h["command"] == "echo me" for h in all_hooks)
-        assert not any("holdthedoor" in h["command"] for h in all_hooks)
+        assert not any("privacyhook" in h["command"] for h in all_hooks)
 
     def test_removes_empty_buckets(self, settings_path: Path):
         S.install(yes=True)
@@ -113,8 +113,8 @@ class TestUninstall:
 def codex_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     hooks_json = tmp_path / "hooks.json"
     config_toml = tmp_path / "config.toml"
-    monkeypatch.setenv("HOLDTHEDOOR_CODEX_SETTINGS_PATH", str(hooks_json))
-    monkeypatch.setenv("HOLDTHEDOOR_CODEX_CONFIG_PATH", str(config_toml))
+    monkeypatch.setenv("PRIVACYHOOK_CODEX_SETTINGS_PATH", str(hooks_json))
+    monkeypatch.setenv("PRIVACYHOOK_CODEX_CONFIG_PATH", str(config_toml))
     return hooks_json, config_toml
 
 
@@ -165,8 +165,8 @@ class TestCodexAdapter:
 
 @pytest.fixture
 def opencode_plugin_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    plugin_path = tmp_path / "plugin" / "holdthedoor.js"
-    monkeypatch.setenv("HOLDTHEDOOR_OPENCODE_PLUGIN_PATH", str(plugin_path))
+    plugin_path = tmp_path / "plugin" / "privacyhook.js"
+    monkeypatch.setenv("PRIVACYHOOK_OPENCODE_PLUGIN_PATH", str(plugin_path))
     return plugin_path
 
 
@@ -175,7 +175,7 @@ class TestOpenCodeAdapter:
         report = S.install(cli="opencode", yes=True)
         assert opencode_plugin_path.exists()
         text = opencode_plugin_path.read_text()
-        assert "holdthedoor-managed-plugin" in text
+        assert "privacyhook-managed-plugin" in text
         assert "tool.execute.before" in text
         assert "tool.execute.after" in text
         assert report["added"] == 2

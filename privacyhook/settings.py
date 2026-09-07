@@ -1,4 +1,4 @@
-"""Manage holdthedoor hook registration across Claude Code, Codex CLI, Gemini CLI, and OpenCode.
+"""Manage privacyhook hook registration across Claude Code, Codex CLI, Gemini CLI, and OpenCode.
 
 Operations:
 
@@ -8,10 +8,10 @@ Operations:
 - `detect_cli()` — return list of installed CLI names
 
 Hook ownership is tracked by command prefix: anything starting with
-`python -m holdthedoor.hooks.` or `python3 -m holdthedoor.hooks.` is ours;
+`python -m privacyhook.hooks.` or `python3 -m privacyhook.hooks.` is ours;
 everything else (user-defined hooks, hooks from other tools) is left alone.
 OpenCode is the exception — see `_install_opencode` — it owns a generated
-JS plugin file instead, marked with a leading `// holdthedoor-managed-plugin`
+JS plugin file instead, marked with a leading `// privacyhook-managed-plugin`
 comment.
 
 Supported CLIs
@@ -19,7 +19,7 @@ Supported CLIs
 claude    — Claude Code  (~/.claude/settings.json)
 codex     — OpenAI Codex CLI  (~/.codex/hooks.json)
 gemini    — Gemini CLI  (~/.gemini/settings.json)
-opencode  — OpenCode  (~/.config/opencode/plugin/holdthedoor.js)
+opencode  — OpenCode  (~/.config/opencode/plugin/privacyhook.js)
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ CLI_ADAPTERS: dict[str, dict] = {
     "claude": {
         "label": "Claude Code",
         "binary": "claude",
-        "settings_env": "HOLDTHEDOOR_SETTINGS_PATH",
+        "settings_env": "PRIVACYHOOK_SETTINGS_PATH",
         "default_settings": "~/.claude/settings.json",
         "windows_settings": "~/AppData/Roaming/Claude/settings.json",
         "hooks_key": "hooks",
@@ -58,7 +58,7 @@ CLI_ADAPTERS: dict[str, dict] = {
     "codex": {
         "label": "OpenAI Codex CLI",
         "binary": "codex",
-        "settings_env": "HOLDTHEDOOR_CODEX_SETTINGS_PATH",
+        "settings_env": "PRIVACYHOOK_CODEX_SETTINGS_PATH",
         "default_settings": "~/.codex/hooks.json",
         "windows_settings": "~/AppData/Roaming/Codex/hooks.json",
         "hooks_key": "hooks",
@@ -74,7 +74,7 @@ CLI_ADAPTERS: dict[str, dict] = {
     "gemini": {
         "label": "Gemini CLI",
         "binary": "gemini",
-        "settings_env": "HOLDTHEDOOR_GEMINI_SETTINGS_PATH",
+        "settings_env": "PRIVACYHOOK_GEMINI_SETTINGS_PATH",
         "default_settings": "~/.gemini/settings.json",
         "windows_settings": "~/AppData/Roaming/Gemini/settings.json",
         "hooks_key": "hooks",
@@ -95,9 +95,9 @@ CLI_ADAPTERS: dict[str, dict] = {
         # the generic hooks-array JSON path the others share.
         "label": "OpenCode",
         "binary": "opencode",
-        "settings_env": "HOLDTHEDOOR_OPENCODE_PLUGIN_PATH",
-        "default_settings": "~/.config/opencode/plugin/holdthedoor.js",
-        "windows_settings": "~/AppData/Roaming/opencode/plugin/holdthedoor.js",
+        "settings_env": "PRIVACYHOOK_OPENCODE_PLUGIN_PATH",
+        "default_settings": "~/.config/opencode/plugin/privacyhook.js",
+        "windows_settings": "~/AppData/Roaming/opencode/plugin/privacyhook.js",
         "kind": "js_plugin",
     },
 }
@@ -106,8 +106,8 @@ SUPPORTED_CLIS = list(CLI_ADAPTERS.keys())
 
 
 def _hook_command(module: str, cli: str) -> str:
-    # Use the exact Python that's running holdthedoor (pipx venv, conda env, etc.)
-    # so the hook process can always import holdthedoor regardless of PATH.
+    # Use the exact Python that's running privacyhook (pipx venv, conda env, etc.)
+    # so the hook process can always import privacyhook regardless of PATH.
     # `--cli` tags which adapter installed this hook: Codex CLI sets no
     # identifying env var at hook runtime (unlike Claude Code), so without
     # this the hook can't tell Codex apart from "unknown" at all.
@@ -115,9 +115,9 @@ def _hook_command(module: str, cli: str) -> str:
 
 
 OUR_COMMAND_PREFIXES = (
-    "python -m holdthedoor.hooks.",
-    "python3 -m holdthedoor.hooks.",
-    f"{sys.executable} -m holdthedoor.hooks.",
+    "python -m privacyhook.hooks.",
+    "python3 -m privacyhook.hooks.",
+    f"{sys.executable} -m privacyhook.hooks.",
 )
 
 
@@ -142,11 +142,11 @@ def settings_path(cli: str = "claude") -> Path:
 
 def backup_path(cli: str = "claude") -> Path:
     p = settings_path(cli)
-    return p.with_suffix(p.suffix + ".holdthedoor.bak")
+    return p.with_suffix(p.suffix + ".privacyhook.bak")
 
 
 def _codex_config_path() -> Path:
-    override = os.environ.get("HOLDTHEDOOR_CODEX_CONFIG_PATH")
+    override = os.environ.get("PRIVACYHOOK_CODEX_CONFIG_PATH")
     if override:
         return Path(override)
     return Path("~/.codex/config.toml").expanduser()
@@ -169,7 +169,7 @@ def _ensure_codex_feature_flag() -> None:
     if re.search(r"^\s*codex_hooks\s*=\s*true", text, re.MULTILINE):
         return
     if path.exists():
-        path.with_suffix(path.suffix + ".holdthedoor.bak").write_text(text, encoding="utf-8")
+        path.with_suffix(path.suffix + ".privacyhook.bak").write_text(text, encoding="utf-8")
     if re.search(r"^\s*\[features\]", text, re.MULTILINE):
         text = re.sub(r"^\s*\[features\]", "[features]\ncodex_hooks = true", text, count=1, flags=re.MULTILINE)
     else:
@@ -183,13 +183,13 @@ def _ensure_codex_feature_flag() -> None:
 # OpenCode adapter (JS plugin file, not a JSON hooks array)
 # ---------------------------------------------------------------------------
 
-_OPENCODE_MARKER = "// holdthedoor-managed-plugin"
+_OPENCODE_MARKER = "// privacyhook-managed-plugin"
 
 _OPENCODE_PLUGIN_TEMPLATE = '''\
-{marker} — generated by `holdthedoor install --cli opencode`.
+{marker} — generated by `privacyhook install --cli opencode`.
 // Do not edit by hand: reinstalling overwrites this file.
 //
-// Bridges OpenCode's tool.execute.before/after hooks to holdthedoor's
+// Bridges OpenCode's tool.execute.before/after hooks to privacyhook's
 // existing Python hook processes (same JSON-over-stdin protocol used by
 // the Claude Code / Codex / Gemini adapters), so detection/blocking/
 // redaction logic lives in one place.
@@ -205,9 +205,9 @@ function runHook(module, payload) {{
     }})
     return out ? JSON.parse(out) : null
   }} catch (err) {{
-    // Non-zero exit == block. holdthedoor writes {{"decision":"block","reason":...}}
+    // Non-zero exit == block. privacyhook writes {{"decision":"block","reason":...}}
     // to stdout even on block, so prefer that over raw stderr when present.
-    let reason = err.stderr ? String(err.stderr).trim() : "blocked by holdthedoor"
+    let reason = err.stderr ? String(err.stderr).trim() : "blocked by privacyhook"
     if (err.stdout) {{
       try {{
         const decision = JSON.parse(String(err.stdout))
@@ -218,17 +218,17 @@ function runHook(module, payload) {{
   }}
 }}
 
-export const HoldTheDoor = async () => {{
+export const PrivacyHook = async () => {{
   return {{
     "tool.execute.before": async (input, output) => {{
-      runHook("holdthedoor.hooks.pre_tool_use", {{
+      runHook("privacyhook.hooks.pre_tool_use", {{
         session_id: input.sessionID,
         tool_name: input.tool,
         tool_input: output.args,
       }})
     }},
     "tool.execute.after": async (input, output) => {{
-      const result = runHook("holdthedoor.hooks.post_tool_use", {{
+      const result = runHook("privacyhook.hooks.post_tool_use", {{
         session_id: input.sessionID,
         tool_name: input.tool,
         tool_response: output.output,
@@ -252,15 +252,15 @@ def _install_opencode(path: Path, *, dry_run: bool) -> dict:
     existed = path.exists()
     if existed and not _is_ours_opencode_plugin(path.read_text(encoding="utf-8")):
         raise RuntimeError(
-            f"{path} exists and isn't a holdthedoor-managed plugin — refusing to overwrite. "
-            f"Remove it manually first if you want holdthedoor to manage this file."
+            f"{path} exists and isn't a privacyhook-managed plugin — refusing to overwrite. "
+            f"Remove it manually first if you want privacyhook to manage this file."
         )
     report = {
         "cli": "opencode",
         "added": 2,  # tool.execute.before + tool.execute.after
         "dry_run": dry_run,
         "path": str(path),
-        "diff_summary": "+1 holdthedoor plugin file for opencode (before/after tool hooks)",
+        "diff_summary": "+1 privacyhook plugin file for opencode (before/after tool hooks)",
     }
     if dry_run:
         return report
@@ -311,21 +311,21 @@ def _hooks_spec(cli: str) -> list[dict]:
         specs.append({
             "bucket": a["post_event"],
             "matcher": a["post_matcher"],
-            "module": "holdthedoor.hooks.post_tool_use",
+            "module": "privacyhook.hooks.post_tool_use",
             "timeout": a["timeout"],
         })
     if a["pre_event"]:
         specs.append({
             "bucket": a["pre_event"],
             "matcher": a["pre_matcher"],
-            "module": "holdthedoor.hooks.pre_tool_use",
+            "module": "privacyhook.hooks.pre_tool_use",
             "timeout": a["timeout"],
         })
     if a["prompt_event"]:
         specs.append({
             "bucket": a["prompt_event"],
             "matcher": a["prompt_matcher"],
-            "module": "holdthedoor.hooks.user_prompt_submit",
+            "module": "privacyhook.hooks.user_prompt_submit",
             "timeout": a["timeout"],
         })
     return specs
@@ -377,7 +377,7 @@ def detect_cli() -> list[str]:
 # ---------------------------------------------------------------------------
 
 def install(cli: str = "claude", *, dry_run: bool = False, yes: bool = False) -> dict:
-    """Register holdthedoor hooks for `cli`. Returns a report dict."""
+    """Register privacyhook hooks for `cli`. Returns a report dict."""
     if cli not in CLI_ADAPTERS:
         raise ValueError(f"unknown CLI {cli!r}, choose from {SUPPORTED_CLIS}")
     if CLI_ADAPTERS[cli].get("kind") == "js_plugin":
@@ -401,7 +401,7 @@ def install(cli: str = "claude", *, dry_run: bool = False, yes: bool = False) ->
         "added": added,
         "dry_run": dry_run,
         "path": str(path),
-        "diff_summary": f"+{added} holdthedoor hook entries for {cli}",
+        "diff_summary": f"+{added} privacyhook hook entries for {cli}",
         "before": before,
         "after": data,
     }

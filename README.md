@@ -1,4 +1,4 @@
-# holdthedoor
+# privacyhook
 
 ```
     __          __    ____  __             __
@@ -44,7 +44,7 @@
 
 ## Why
 
-AI coding agents read your filesystem, run shell commands, and fetch web pages — then feed the results straight back into an LLM context. That's how secrets leak: a `cat .env` in an agent's own reasoning, a stray API key in a curl response, a credential pasted by mistake into a prompt. Prompt-based instructions ("don't read secrets") are not a security boundary — the LLM can be talked out of them. holdthedoor sits **outside** the model, as CLI hooks that run in plain Python before/after every tool call. The LLM cannot see, disable, or negotiate with a hook — it either lets the call through or it doesn't.
+AI coding agents read your filesystem, run shell commands, and fetch web pages — then feed the results straight back into an LLM context. That's how secrets leak: a `cat .env` in an agent's own reasoning, a stray API key in a curl response, a credential pasted by mistake into a prompt. Prompt-based instructions ("don't read secrets") are not a security boundary — the LLM can be talked out of them. privacyhook sits **outside** the model, as CLI hooks that run in plain Python before/after every tool call. The LLM cannot see, disable, or negotiate with a hook — it either lets the call through or it doesn't.
 
 ---
 
@@ -67,7 +67,7 @@ AI coding agents read your filesystem, run shell commands, and fetch web pages �
 | **PreToolUse / BeforeTool / tool.execute.before** | Before any file/shell tool call | Blocks calls targeting sensitive paths (`.env`, SSH keys, credentials, `*.pem`) **and** evaluates your custom [policy rules](#tool-call-policy-engine). Exit code 2 (or a thrown error for OpenCode) = CLI aborts the call. |
 | **UserPromptSubmit** | Every user prompt (Claude Code + Codex only) | Scans your prompt for structured secrets. Warns by default, blocks in strict mode. |
 
-Every event — redaction, block, warning, policy match — is recorded in an HMAC-chained audit log (`~/.local/share/holdthedoor/audit.jsonl`). Tampering with any entry breaks the chain, and `holdthedoor audit --verify` proves it.
+Every event — redaction, block, warning, policy match — is recorded in an HMAC-chained audit log (`~/.local/share/privacyhook/audit.jsonl`). Tampering with any entry breaks the chain, and `privacyhook audit --verify` proves it.
 
 ---
 
@@ -77,32 +77,32 @@ Sensitive-path blocking (`.env`, SSH keys, …) is built in and always on. On to
 
 ```bash
 # Block force-pushes to any branch
-holdthedoor policy add --id no-force-push \
+privacyhook policy add --id no-force-push \
   --tool Bash --match 'push.*--force' --action block \
   --reason "force push needs a human"
 
 # Warn (but don't block) writes under any node_modules-like path
-holdthedoor policy add --id watch-writes \
+privacyhook policy add --id watch-writes \
   --tool Write --match-type path_glob --match '*/node_modules/*' \
   --action warn
 
 # List active rules
-holdthedoor policy list
+privacyhook policy list
 
 # Dry-run a command against current rules — no side effects
-holdthedoor policy test "git push --force origin main"
+privacyhook policy test "git push --force origin main"
 # → block  (matched rule 'no-force-push': force push needs a human)
 
 # Remove a rule
-holdthedoor policy remove no-force-push
+privacyhook policy remove no-force-push
 ```
 
-Rules live in `~/.local/share/holdthedoor/policy.json`, are evaluated in the order they were added, and the first match wins (no match → allow). Each rule is scoped to a tool (`Bash`, `Read`, `Write`, `*` for all, or `Tool1|Tool2`) and matches either:
+Rules live in `~/.local/share/privacyhook/policy.json`, are evaluated in the order they were added, and the first match wins (no match → allow). Each rule is scoped to a tool (`Bash`, `Read`, `Write`, `*` for all, or `Tool1|Tool2`) and matches either:
 
 - `command_regex` (default) — a regex tested against the shell command (`Bash` calls)
 - `path_glob` — a glob tested against the file path (`Read`/`Write`/`Edit` calls)
 
-Every match is written to the audit log as `policy_block` or `policy_warn`, alongside the built-in events, so `holdthedoor audit` shows a complete picture.
+Every match is written to the audit log as `policy_block` or `policy_warn`, alongside the built-in events, so `privacyhook audit` shows a complete picture.
 
 This is the mechanism to reach for when the built-in checks aren't enough for your team: pin dangerous commands, restrict writes to specific paths, or require review for anything touching a directory you care about — all enforced deterministically, outside the model's control.
 
@@ -124,11 +124,11 @@ This is the mechanism to reach for when the built-in checks aren't enough for yo
 # Install pipx if not already present
 brew install pipx
 
-# Install holdthedoor
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+# Install privacyhook
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Register hooks (auto-detects installed CLIs)
-holdthedoor install
+privacyhook install
 ```
 
 ### Linux
@@ -139,10 +139,10 @@ python3 -m pip install --user pipx
 python3 -m pipx ensurepath
 
 # Restart terminal, then:
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Register hooks
-holdthedoor install
+privacyhook install
 ```
 
 ### Windows (PowerShell)
@@ -153,10 +153,10 @@ pip install pipx
 pipx ensurepath
 
 # Restart terminal, then:
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Register hooks
-holdthedoor install
+privacyhook install
 ```
 
 > **Windows note:** Settings are written to `%APPDATA%\Claude\settings.json`,
@@ -165,10 +165,10 @@ holdthedoor install
 ### From source (development)
 
 ```bash
-git clone https://github.com/adrienchristiaen/holdthedoor.git
-cd holdthedoor
+git clone https://github.com/adrienchristiaen/privacyhook.git
+cd privacyhook
 pipx install --editable .
-holdthedoor install
+privacyhook install
 ```
 
 ### Targeting a specific CLI
@@ -176,21 +176,21 @@ holdthedoor install
 By default `install` auto-detects which CLIs are installed. To target explicitly:
 
 ```bash
-holdthedoor install --cli claude     # Claude Code only
-holdthedoor install --cli codex      # Codex CLI only
-holdthedoor install --cli gemini     # Gemini CLI only
-holdthedoor install --cli opencode   # OpenCode only (writes a JS plugin, not a JSON hook)
-holdthedoor install --cli all        # all detected CLIs
+privacyhook install --cli claude     # Claude Code only
+privacyhook install --cli codex      # Codex CLI only
+privacyhook install --cli gemini     # Gemini CLI only
+privacyhook install --cli opencode   # OpenCode only (writes a JS plugin, not a JSON hook)
+privacyhook install --cli all        # all detected CLIs
 ```
 
-Same flag works for `uninstall` and `status`. A short `hold` alias is also installed alongside `holdthedoor` for every command below.
+Same flag works for `uninstall` and `status`.
 
 ---
 
 ## Verify installation
 
 ```bash
-holdthedoor status
+privacyhook status
 ```
 
 Expected output:
@@ -200,7 +200,7 @@ Expected output:
   /Users/you/.claude/settings.json
   hooks: PostToolUse · PreToolUse · UserPromptSubmit
 
-SESSION  /tmp/holdthedoor/<session-id>/session.db
+SESSION  /tmp/privacyhook/<session-id>/session.db
   0 values redacted this session
 
 RECENT EVENTS
@@ -215,22 +215,22 @@ Open a new CLI session — hooks activate automatically.
 
 | Command | What it does |
 |---|---|
-| `holdthedoor status [--cli auto\|claude\|codex\|gemini\|opencode\|all]` | Installed hooks per CLI, session DB path, last 5 audit events. |
-| `holdthedoor reveal <token>` | Print the original value behind a session token (session-scoped — dies with the session). |
-| `holdthedoor audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
-| `holdthedoor audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
-| `holdthedoor policy list \| add \| remove \| test` | Manage custom rules — see [policy engine](#tool-call-policy-engine). |
-| `holdthedoor monitor [--host] [--port] [--open]` | Serve a live audit-log dashboard on localhost — see [live monitor](#live-monitor). |
-| `holdthedoor uninstall [--cli ...] [--yes]` | Strips only holdthedoor entries. Other hooks are untouched. |
+| `privacyhook status [--cli auto\|claude\|codex\|gemini\|opencode\|all]` | Installed hooks per CLI, session DB path, last 5 audit events. |
+| `privacyhook reveal <token>` | Print the original value behind a session token (session-scoped — dies with the session). |
+| `privacyhook audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
+| `privacyhook audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
+| `privacyhook policy list \| add \| remove \| test` | Manage custom rules — see [policy engine](#tool-call-policy-engine). |
+| `privacyhook monitor [--host] [--port] [--open]` | Serve a live audit-log dashboard on localhost — see [live monitor](#live-monitor). |
+| `privacyhook uninstall [--cli ...] [--yes]` | Strips only privacyhook entries. Other hooks are untouched. |
 
 ```
-$ holdthedoor reveal '[WALL:openai_key:1]'
+$ privacyhook reveal '[WALL:openai_key:1]'
 sk-proj-••••••••••••••••••••••••••••••••••••
 
-$ holdthedoor audit --verify
+$ privacyhook audit --verify
   ✓ chain intact
 
-$ holdthedoor audit --follow
+$ privacyhook audit --follow
 SESSION AUDIT  —  live (Ctrl-C to stop)
 ────────────────────────────────────────────────────────────────
   16:11:02  ✗ block  pre-tool  Read  /you/project/.env  →  filename '.env' is sensitive
@@ -238,25 +238,25 @@ SESSION AUDIT  —  live (Ctrl-C to stop)
 
 ### Emergency disable
 
-Set `HOLDTHEDOOR_DISABLED=1` to bypass all hooks (e.g., to write documentation containing example secret patterns):
+Set `PRIVACYHOOK_DISABLED=1` to bypass all hooks (e.g., to write documentation containing example secret patterns):
 
 ```bash
-export HOLDTHEDOOR_DISABLED=1
+export PRIVACYHOOK_DISABLED=1
 # ... do your thing ...
-unset HOLDTHEDOOR_DISABLED
+unset PRIVACYHOOK_DISABLED
 ```
 
 ---
 
 ## Live monitor
 
-`holdthedoor monitor` serves a zero-dependency, local-only dashboard over the live audit log — useful to keep an eye on a long agent session in a second window without polling `audit --follow`.
+`privacyhook monitor` serves a zero-dependency, local-only dashboard over the live audit log — useful to keep an eye on a long agent session in a second window without polling `audit --follow`.
 
 ```bash
-holdthedoor monitor --open
+privacyhook monitor --open
 ```
 
-![holdthedoor monitor dashboard](docs/img/monitor-screenshot.png)
+![privacyhook monitor dashboard](docs/img/monitor-screenshot.png)
 
 Each row is one audit event: which hook fired, what it decided (`block` / `redact` / `warn` / `policy_block`), and why. The `chain intact` indicator re-verifies the HMAC chain on every load — a `chain BROKEN` banner means the log was tampered with after the fact. Binds to `127.0.0.1` only; nothing leaves the machine.
 
@@ -267,7 +267,7 @@ Each row is one audit event: which hook fired, what it decided (`block` / `redac
 By default the `UserPromptSubmit` hook warns but lets the prompt through. To block:
 
 ```bash
-export HOLDTHEDOOR_STRICT=1
+export PRIVACYHOOK_STRICT=1
 ```
 
 ---
@@ -291,16 +291,16 @@ blocked as expected (exit 2)
 
 === 3. UserPromptSubmit warn ===
 {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
-  "additionalContext": "⚠ holdthedoor: 1 sensitive value(s) detected in your prompt
+  "additionalContext": "⚠ privacyhook: 1 sensitive value(s) detected in your prompt
   (categories: email). The prompt was sent unchanged, but tokens have been recorded
-  for `holdthedoor reveal`."}}
+  for `privacyhook reveal`."}}
 
 === 6. CLI: status ===
 [Claude Code]  ✓ installed
   hooks: PostToolUse · PreToolUse · UserPromptSubmit
 
 SESSION  1 value redacted this session
-    [WALL:email:1]  (email)  →  holdthedoor reveal '[WALL:email:1]'
+    [WALL:email:1]  (email)  →  privacyhook reveal '[WALL:email:1]'
 
 RECENT EVENTS
   12:48:27 [demo] claude  ✗ block    pre-tool   Read  .env  →  filename '.env' is sensitive
@@ -318,7 +318,7 @@ SESSION AUDIT  —  2 events
 ## Architecture
 
 ```
-holdthedoor/
+privacyhook/
 ├── patterns.py    # regex categories + sensitive filename/dir/suffix sets
 ├── session.py     # SQLite WAL per-session store
 ├── tokenizer.py   # value <-> [WALL:cat:N] bidirectional, idempotent
@@ -334,7 +334,7 @@ holdthedoor/
     └── user_prompt_submit.py  # UserPromptSubmit (Claude Code + Codex)
 ```
 
-For every JSON-hooks-array CLI (Claude/Codex/Gemini), `install` writes a hook entry that spawns `python -m holdthedoor.hooks.<name> --cli <cli>` per event. OpenCode is the one exception: it loads a JS plugin directly into its own process, so `install --cli opencode` instead generates a thin JS shim (`~/.config/opencode/plugin/holdthedoor.js`) that shells out to the same Python hook modules — no logic duplicated in JS.
+For every JSON-hooks-array CLI (Claude/Codex/Gemini), `install` writes a hook entry that spawns `python -m privacyhook.hooks.<name> --cli <cli>` per event. OpenCode is the one exception: it loads a JS plugin directly into its own process, so `install --cli opencode` instead generates a thin JS shim (`~/.config/opencode/plugin/privacyhook.js`) that shells out to the same Python hook modules — no logic duplicated in JS.
 
 ### CLI adapter mapping
 
@@ -367,7 +367,7 @@ For every JSON-hooks-array CLI (Claude/Codex/Gemini), `install` writes a hook en
 | `private_ip` | RFC 1918 ranges |
 | `internal_hostname` | `*.internal`, `*.corp`, `*.local` |
 
-Extend by adding entries to `holdthedoor/patterns.py`. Extend blocking behavior for anything else — a command, a path, a whole category of writes — with the [policy engine](#tool-call-policy-engine) instead, no code change needed.
+Extend by adding entries to `privacyhook/patterns.py`. Extend blocking behavior for anything else — a command, a path, a whole category of writes — with the [policy engine](#tool-call-policy-engine) instead, no code change needed.
 
 ---
 
@@ -376,7 +376,7 @@ Extend by adding entries to `holdthedoor/patterns.py`. Extend blocking behavior 
 For SOC2-style external audits, export the HMAC-verified audit log as CSV:
 
 ```bash
-holdthedoor audit export --since 2026-01-01 --until 2026-03-31 --out q1-audit.csv
+privacyhook audit export --since 2026-01-01 --until 2026-03-31 --out q1-audit.csv
 ```
 
 The first line is a `#`-prefixed metadata comment (`chain_verified=true/false`, event count, generation timestamp), so an auditor can see at a glance whether the log was tampered with before trusting the rows beneath it.

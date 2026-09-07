@@ -1,12 +1,12 @@
-# holdthedoor control plane
+# privacyhook control plane
 
 Centralized policy for teams: a security team writes one `policy.yaml`,
-deploys this service on a pod, and every developer's local `holdthedoor`
+deploys this service on a pod, and every developer's local `privacyhook`
 hook pulls it live. Rules served here are authoritative — they're checked
 before a developer's local `policy.json`, so they can't be overridden
 locally.
 
-This is a separate deployable from the `holdthedoor` pip package. The CLI
+This is a separate deployable from the `privacyhook` pip package. The CLI
 and hooks stay fully usable (and MIT-licensed) without this — it's opt-in
 via two env vars on the client side.
 
@@ -14,17 +14,17 @@ via two env vars on the client side.
 
 ```bash
 pip install pyyaml
-HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH=./controlplane/example-policy.yaml \
-HOLDTHEDOOR_CONTROLPLANE_TOKEN=dev-token \
+PRIVACYHOOK_CONTROLPLANE_POLICY_PATH=./controlplane/example-policy.yaml \
+PRIVACYHOOK_CONTROLPLANE_TOKEN=dev-token \
 python -m controlplane.server
 ```
 
 Point a developer's hook at it:
 
 ```bash
-export HOLDTHEDOOR_CONTROLPLANE_URL=http://127.0.0.1:8957
-export HOLDTHEDOOR_CONTROLPLANE_TOKEN=dev-token
-holdthedoor status   # shows "CONTROL PLANE: connected"
+export PRIVACYHOOK_CONTROLPLANE_URL=http://127.0.0.1:8957
+export PRIVACYHOOK_CONTROLPLANE_TOKEN=dev-token
+privacyhook status   # shows "CONTROL PLANE: connected"
 ```
 
 ## Endpoints
@@ -32,8 +32,8 @@ holdthedoor status   # shows "CONTROL PLANE: connected"
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
 | `/v1/policy` | GET | Bearer token | Serves the current rule set + a content-hash version |
-| `/v1/events` | POST | Bearer token, rate-limited (60/min/IP by default — tune via `HOLDTHEDOOR_CONTROLPLANE_EVENTS_RATE_LIMIT`) | Receives decision metadata (`action`, `tool`, `team`, `rule_id`) — never raw commands/paths/secrets |
-| `/metrics` | GET | none | Prometheus counters (`holdthedoor_policy_decisions_total`, labeled `tenant`/`action`/`tool`/`team`) — point Grafana/Datadog at this |
+| `/v1/events` | POST | Bearer token, rate-limited (60/min/IP by default — tune via `PRIVACYHOOK_CONTROLPLANE_EVENTS_RATE_LIMIT`) | Receives decision metadata (`action`, `tool`, `team`, `rule_id`) — never raw commands/paths/secrets |
+| `/metrics` | GET | none | Prometheus counters (`privacyhook_policy_decisions_total`, labeled `tenant`/`action`/`tool`/`team`) — point Grafana/Datadog at this |
 | `/healthz` | GET | none | k8s liveness/readiness probe |
 
 ## Grafana dashboard
@@ -52,7 +52,7 @@ directly to the internet without TLS in front of it**: the bearer token and
 policy content would otherwise travel in clear text.
 
 - **Kubernetes**: put an Ingress (nginx-ingress, Traefik, etc.) or a service
-  mesh (Istio, Linkerd) in front of the `holdthedoor-controlplane` Service and
+  mesh (Istio, Linkerd) in front of the `privacyhook-controlplane` Service and
   terminate TLS there — same pattern as any other internal API.
 - **Standalone / Docker**: put it behind a reverse proxy (Caddy, nginx, or a
   cloud load balancer) that terminates TLS and forwards plain HTTP to
@@ -65,16 +65,16 @@ policy content would otherwise travel in clear text.
 
 The default setup above is single-tenant: one token, one `policy.yaml`. If
 you're hosting this control plane on behalf of several distinct clients
-(e.g. as a managed service), point `HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH`
+(e.g. as a managed service), point `PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH`
 at a YAML file instead of setting `_TOKEN`/`_POLICY_PATH` directly:
 
 ```yaml
 - id: acme
   token: acme-token
-  policy_path: /etc/holdthedoor/tenants/acme/policy.yaml
+  policy_path: /etc/privacyhook/tenants/acme/policy.yaml
 - id: globex
   token: globex-token
-  policy_path: /etc/holdthedoor/tenants/globex/policy.yaml
+  policy_path: /etc/privacyhook/tenants/globex/policy.yaml
 ```
 
 Each tenant's token, policy, and `/metrics` counters are fully isolated —
@@ -87,8 +87,8 @@ a duplicate of either is rejected at startup. See
 ## Deploy on Kubernetes
 
 ```bash
-docker build -t holdthedoor-controlplane:latest -f controlplane/Dockerfile .
-kubectl create secret generic holdthedoor-controlplane-token --from-literal=token=<your-token>
+docker build -t privacyhook-controlplane:latest -f controlplane/Dockerfile .
+kubectl create secret generic privacyhook-controlplane-token --from-literal=token=<your-token>
 kubectl apply -f controlplane/k8s/configmap-example.yaml
 kubectl apply -f controlplane/k8s/deployment.yaml
 kubectl apply -f controlplane/k8s/service.yaml

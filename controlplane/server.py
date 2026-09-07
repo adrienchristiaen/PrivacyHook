@@ -1,12 +1,12 @@
 """Licensed under the Business Source License 1.1 — see ./LICENSE.
 Free to self-host; may not be resold as a hosted/managed service.
 
-holdthedoor control plane: serves a centrally-managed policy.yaml to
+privacyhook control plane: serves a centrally-managed policy.yaml to
 every developer's hook, and exposes decision counters for Grafana/Datadog.
 
 Run:
-    HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH=./example-policy.yaml \\
-    HOLDTHEDOOR_CONTROLPLANE_TOKEN=change-me \\
+    PRIVACYHOOK_CONTROLPLANE_POLICY_PATH=./example-policy.yaml \\
+    PRIVACYHOOK_CONTROLPLANE_TOKEN=change-me \\
     python -m controlplane.server
 
 Endpoints:
@@ -18,7 +18,7 @@ Endpoints:
     GET  /metrics     — Prometheus text exposition of decision counters.
     GET  /healthz     — plain 200, for k8s liveness/readiness probes.
 
-Stdlib http.server only, matching holdthedoor/monitor.py's convention of no
+Stdlib http.server only, matching privacyhook/monitor.py's convention of no
 third-party deps on the request path (PyYAML is the sole control-plane-only
 dependency, isolated to policy_yaml.py).
 """
@@ -49,7 +49,7 @@ _rate_limit_hits: dict[str, deque] = defaultdict(deque)
 
 
 def _events_rate_limit() -> int:
-    return int(os.environ.get("HOLDTHEDOOR_CONTROLPLANE_EVENTS_RATE_LIMIT", "60"))
+    return int(os.environ.get("PRIVACYHOOK_CONTROLPLANE_EVENTS_RATE_LIMIT", "60"))
 
 
 def _rate_limited(client_ip: str) -> bool:
@@ -141,14 +141,14 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _send_metrics(self) -> None:
         lines = [
-            "# HELP holdthedoor_policy_decisions_total Policy decisions reported by hooks.",
-            "# TYPE holdthedoor_policy_decisions_total counter",
+            "# HELP privacyhook_policy_decisions_total Policy decisions reported by hooks.",
+            "# TYPE privacyhook_policy_decisions_total counter",
         ]
         with _counters_lock:
             items = list(_decision_counts.items())
         for (tenant_id, action, tool, team), count in items:
             lines.append(
-                'holdthedoor_policy_decisions_total{tenant="%s",action="%s",tool="%s",team="%s"} %d'
+                'privacyhook_policy_decisions_total{tenant="%s",action="%s",tool="%s",team="%s"} %d'
                 % (tenant_id, action, tool, team, count)
             )
         body = ("\n".join(lines) + "\n").encode("utf-8")
@@ -190,7 +190,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def serve(host: str = "0.0.0.0", port: int = 8957) -> None:
     server = ThreadingHTTPServer((host, port), _Handler)
-    print(f"holdthedoor control plane — http://{host}:{port}/  (Ctrl-C to stop)")
+    print(f"privacyhook control plane — http://{host}:{port}/  (Ctrl-C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -201,6 +201,6 @@ def serve(host: str = "0.0.0.0", port: int = 8957) -> None:
 
 if __name__ == "__main__":
     serve(
-        host=os.environ.get("HOLDTHEDOOR_CONTROLPLANE_HOST", "0.0.0.0"),
-        port=int(os.environ.get("HOLDTHEDOOR_CONTROLPLANE_PORT", "8957")),
+        host=os.environ.get("PRIVACYHOOK_CONTROLPLANE_HOST", "0.0.0.0"),
+        port=int(os.environ.get("PRIVACYHOOK_CONTROLPLANE_PORT", "8957")),
     )

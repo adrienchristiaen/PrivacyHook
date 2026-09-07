@@ -1,6 +1,6 @@
 """Shared helpers for hook entry points.
 
-Each hook runs as `python -m holdthedoor.hooks.<name>`: reads a single JSON
+Each hook runs as `python -m privacyhook.hooks.<name>`: reads a single JSON
 event from stdin, processes it, optionally writes a JSON response to stdout,
 and exits with the appropriate code (0 = pass, 2 = block).
 """
@@ -121,7 +121,7 @@ def write_output(payload: dict[str, Any]) -> None:
 def _load_persistent_hmac_key() -> bytes:
     """Load (or create) the persistent HMAC key stored next to the audit log.
 
-    Stored at ~/.local/share/holdthedoor/hmac.key so it survives across
+    Stored at ~/.local/share/privacyhook/hmac.key so it survives across
     sessions and /tmp clears — enabling cross-session chain verification.
     """
     from ..audit import default_audit_path
@@ -153,5 +153,5 @@ def block(reason: str, exit_code: int = 2) -> None:
     # protocol is a stdout JSON {"decision": "block", "reason": ...} — emit
     # both so either interpretation stops the tool call.
     write_output({"decision": "block", "reason": reason})
-    sys.stderr.write(f"holdthedoor: {reason}\n")
+    sys.stderr.write(f"privacyhook: {reason}\n")
     sys.exit(exit_code)

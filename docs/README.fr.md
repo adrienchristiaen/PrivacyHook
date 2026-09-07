@@ -1,4 +1,4 @@
-# holdthedoor
+# privacyhook
 
 > Couche de sécurité privacy-first pour les CLI de coding IA. Des hooks déterministes que le LLM ne peut pas contourner — les secrets sont masqués, les fichiers sensibles bloqués, les prompts analysés, et chaque appel d'outil peut être gouverné par des règles que vous définissez.
 
@@ -33,7 +33,7 @@
 
 ## Pourquoi
 
-Les agents de coding IA lisent votre filesystem, exécutent des commandes shell, récupèrent des pages web — puis renvoient tout ça directement dans le contexte du LLM. C'est comme ça que les secrets fuient : un `cat .env` dans le raisonnement de l'agent, une clé API qui traîne dans une réponse curl, un credential collé par erreur dans un prompt. Des instructions au niveau du prompt ("ne lis pas les secrets") ne sont pas une barrière de sécurité — le LLM peut en être détourné. holdthedoor se place **en dehors** du modèle, sous forme de hooks CLI qui tournent en Python pur avant/après chaque appel d'outil. Le LLM ne peut ni voir, ni désactiver, ni négocier avec un hook — soit l'appel passe, soit il ne passe pas.
+Les agents de coding IA lisent votre filesystem, exécutent des commandes shell, récupèrent des pages web — puis renvoient tout ça directement dans le contexte du LLM. C'est comme ça que les secrets fuient : un `cat .env` dans le raisonnement de l'agent, une clé API qui traîne dans une réponse curl, un credential collé par erreur dans un prompt. Des instructions au niveau du prompt ("ne lis pas les secrets") ne sont pas une barrière de sécurité — le LLM peut en être détourné. privacyhook se place **en dehors** du modèle, sous forme de hooks CLI qui tournent en Python pur avant/après chaque appel d'outil. Le LLM ne peut ni voir, ni désactiver, ni négocier avec un hook — soit l'appel passe, soit il ne passe pas.
 
 ---
 
@@ -55,7 +55,7 @@ Les agents de coding IA lisent votre filesystem, exécutent des commandes shell,
 | **PreToolUse / BeforeTool** | Avant tout appel fichier/shell | Bloque les appels ciblant des chemins sensibles (`.env`, clés SSH, credentials, `*.pem`) **et** évalue vos [règles de policy](#moteur-de-policy-tool-call) personnalisées. Code de sortie 2 = le CLI annule l'appel. |
 | **UserPromptSubmit** | Chaque prompt utilisateur (Claude Code + Codex uniquement) | Analyse le prompt à la recherche de secrets structurés. Avertit par défaut, bloque en mode strict. |
 
-Chaque événement — redaction, blocage, avertissement, match de policy — est enregistré dans un log d'audit chaîné par HMAC (`~/.local/share/holdthedoor/audit.jsonl`). Toute modification d'une entrée casse la chaîne, et `holdthedoor audit --verify` le prouve.
+Chaque événement — redaction, blocage, avertissement, match de policy — est enregistré dans un log d'audit chaîné par HMAC (`~/.local/share/privacyhook/audit.jsonl`). Toute modification d'une entrée casse la chaîne, et `privacyhook audit --verify` le prouve.
 
 ---
 
@@ -65,32 +65,32 @@ Le blocage des chemins sensibles (`.env`, clés SSH, …) est intégré et toujo
 
 ```bash
 # Bloquer les force-push sur n'importe quelle branche
-holdthedoor policy add --id no-force-push \
+privacyhook policy add --id no-force-push \
   --tool Bash --match 'push.*--force' --action block \
   --reason "force push nécessite une validation humaine"
 
 # Avertir (sans bloquer) sur les écritures sous un chemin type node_modules
-holdthedoor policy add --id watch-writes \
+privacyhook policy add --id watch-writes \
   --tool Write --match-type path_glob --match '*/node_modules/*' \
   --action warn
 
 # Lister les règles actives
-holdthedoor policy list
+privacyhook policy list
 
 # Tester une commande contre les règles actuelles — aucun effet de bord
-holdthedoor policy test "git push --force origin main"
+privacyhook policy test "git push --force origin main"
 # → block  (matched rule 'no-force-push': force push nécessite une validation humaine)
 
 # Supprimer une règle
-holdthedoor policy remove no-force-push
+privacyhook policy remove no-force-push
 ```
 
-Les règles sont stockées dans `~/.local/share/holdthedoor/policy.json`, évaluées dans l'ordre d'ajout, et la première qui matche l'emporte (aucun match → allow). Chaque règle est scopée à un outil (`Bash`, `Read`, `Write`, `*` pour tous, ou `Tool1|Tool2`) et matche soit :
+Les règles sont stockées dans `~/.local/share/privacyhook/policy.json`, évaluées dans l'ordre d'ajout, et la première qui matche l'emporte (aucun match → allow). Chaque règle est scopée à un outil (`Bash`, `Read`, `Write`, `*` pour tous, ou `Tool1|Tool2`) et matche soit :
 
 - `command_regex` (défaut) — une regex testée sur la commande shell (appels `Bash`)
 - `path_glob` — un glob testé sur le chemin de fichier (appels `Read`/`Write`/`Edit`)
 
-Chaque match est écrit dans le log d'audit comme `policy_block` ou `policy_warn`, aux côtés des événements intégrés — `holdthedoor audit` donne une vue complète.
+Chaque match est écrit dans le log d'audit comme `policy_block` ou `policy_warn`, aux côtés des événements intégrés — `privacyhook audit` donne une vue complète.
 
 C'est le mécanisme à utiliser quand les checks intégrés ne suffisent pas pour votre équipe : épingler des commandes dangereuses, restreindre les écritures à certains chemins, ou exiger une revue pour tout ce qui touche un répertoire sensible — le tout appliqué de façon déterministe, en dehors du contrôle du modèle.
 
@@ -112,11 +112,11 @@ C'est le mécanisme à utiliser quand les checks intégrés ne suffisent pas pou
 # Installer pipx si absent
 brew install pipx
 
-# Installer holdthedoor
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+# Installer privacyhook
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Enregistrer les hooks (détection auto des CLI installés)
-holdthedoor install
+privacyhook install
 ```
 
 ### Linux
@@ -127,10 +127,10 @@ python3 -m pip install --user pipx
 python3 -m pipx ensurepath
 
 # Redémarrer le terminal, puis :
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Enregistrer les hooks
-holdthedoor install
+privacyhook install
 ```
 
 ### Windows (PowerShell)
@@ -141,10 +141,10 @@ pip install pipx
 pipx ensurepath
 
 # Redémarrer le terminal, puis :
-pipx install git+https://github.com/adrienchristiaen/holdthedoor.git
+pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Enregistrer les hooks
-holdthedoor install
+privacyhook install
 ```
 
 > **Note Windows :** Les settings sont écrits dans `%APPDATA%\Claude\settings.json`,
@@ -153,10 +153,10 @@ holdthedoor install
 ### Depuis les sources (développement)
 
 ```bash
-git clone https://github.com/adrienchristiaen/holdthedoor.git
-cd holdthedoor
+git clone https://github.com/adrienchristiaen/privacyhook.git
+cd privacyhook
 pipx install --editable .
-holdthedoor install
+privacyhook install
 ```
 
 ### Cibler un CLI spécifique
@@ -164,10 +164,10 @@ holdthedoor install
 Par défaut, `install` détecte automatiquement les CLI installés. Pour cibler explicitement :
 
 ```bash
-holdthedoor install --cli claude   # Claude Code uniquement
-holdthedoor install --cli codex    # Codex CLI uniquement
-holdthedoor install --cli gemini   # Gemini CLI uniquement
-holdthedoor install --cli all      # Tous les CLI détectés
+privacyhook install --cli claude   # Claude Code uniquement
+privacyhook install --cli codex    # Codex CLI uniquement
+privacyhook install --cli gemini   # Gemini CLI uniquement
+privacyhook install --cli all      # Tous les CLI détectés
 ```
 
 Le même flag fonctionne pour `uninstall` et `status`.
@@ -177,7 +177,7 @@ Le même flag fonctionne pour `uninstall` et `status`.
 ## Vérifier l'installation
 
 ```bash
-holdthedoor status
+privacyhook status
 ```
 
 Sortie attendue :
@@ -187,7 +187,7 @@ Sortie attendue :
   /Users/vous/.claude/settings.json
   hooks: PostToolUse · PreToolUse · UserPromptSubmit
 
-SESSION  /tmp/holdthedoor/<session-id>/session.db
+SESSION  /tmp/privacyhook/<session-id>/session.db
   0 values redacted this session
 
 RECENT EVENTS
@@ -202,20 +202,20 @@ Ouvrez une nouvelle session CLI — les hooks s'activent automatiquement.
 
 | Commande | Ce qu'elle fait |
 |---|---|
-| `holdthedoor status [--cli auto\|claude\|codex\|gemini\|all]` | Hooks installés par CLI, chemin de la session DB, 5 derniers événements d'audit. |
-| `holdthedoor reveal <token>` | Affiche la valeur originale derrière un token de session (scopé à la session — meurt avec elle). |
-| `holdthedoor audit [--verify] [--last N] [--json] [--follow]` | Affiche le log d'audit. `--verify` parcourt la chaîne HMAC. `--follow` (`-f`) suit les nouveaux événements en direct, pour un monitoring dans un second terminal. |
-| `holdthedoor policy list \| add \| remove \| test` | Gère les règles personnalisées — voir [moteur de policy](#moteur-de-policy-tool-call). |
-| `holdthedoor uninstall [--cli ...] [--yes]` | Retire uniquement les entrées holdthedoor. Les autres hooks sont préservés. |
+| `privacyhook status [--cli auto\|claude\|codex\|gemini\|all]` | Hooks installés par CLI, chemin de la session DB, 5 derniers événements d'audit. |
+| `privacyhook reveal <token>` | Affiche la valeur originale derrière un token de session (scopé à la session — meurt avec elle). |
+| `privacyhook audit [--verify] [--last N] [--json] [--follow]` | Affiche le log d'audit. `--verify` parcourt la chaîne HMAC. `--follow` (`-f`) suit les nouveaux événements en direct, pour un monitoring dans un second terminal. |
+| `privacyhook policy list \| add \| remove \| test` | Gère les règles personnalisées — voir [moteur de policy](#moteur-de-policy-tool-call). |
+| `privacyhook uninstall [--cli ...] [--yes]` | Retire uniquement les entrées privacyhook. Les autres hooks sont préservés. |
 
 ```
-$ holdthedoor reveal '[WALL:openai_key:1]'
+$ privacyhook reveal '[WALL:openai_key:1]'
 sk-proj-••••••••••••••••••••••••••••••••••••••
 
-$ holdthedoor audit --verify
+$ privacyhook audit --verify
   ✓ chain intact
 
-$ holdthedoor audit --follow
+$ privacyhook audit --follow
 SESSION AUDIT  —  live (Ctrl-C to stop)
 ────────────────────────────────────────────────────────────────
   16:11:02  ✗ block  pre-tool  Read  /vous/projet/.env  →  filename '.env' is sensitive
@@ -224,9 +224,9 @@ SESSION AUDIT  —  live (Ctrl-C to stop)
 ### Désactivation d'urgence
 
 ```bash
-export HOLDTHEDOOR_DISABLED=1
+export PRIVACYHOOK_DISABLED=1
 # ... opérations avec exemples de patterns de secrets ...
-unset HOLDTHEDOOR_DISABLED
+unset PRIVACYHOOK_DISABLED
 ```
 
 ---
@@ -236,7 +236,7 @@ unset HOLDTHEDOOR_DISABLED
 Par défaut, le hook `UserPromptSubmit` avertit sans bloquer. Pour bloquer :
 
 ```bash
-export HOLDTHEDOOR_STRICT=1
+export PRIVACYHOOK_STRICT=1
 ```
 
 ---
@@ -254,7 +254,7 @@ Tourne dans un tmpdir isolé — ne touche pas à votre config CLI réelle.
 ## Architecture
 
 ```
-holdthedoor/
+privacyhook/
 ├── patterns.py    # catégories regex + sets filename/dir/suffix sensibles
 ├── session.py     # store SQLite WAL par session
 ├── tokenizer.py   # valeur <-> [WALL:cat:N] bidirectionnel, idempotent
@@ -300,7 +300,7 @@ holdthedoor/
 | `private_ip` | Plages RFC 1918 |
 | `internal_hostname` | `*.internal`, `*.corp`, `*.local` |
 
-Étendre en ajoutant des entrées dans `holdthedoor/patterns.py`. Pour bloquer autre chose — une commande, un chemin, toute une catégorie d'écritures — utilisez plutôt le [moteur de policy](#moteur-de-policy-tool-call), sans toucher au code.
+Étendre en ajoutant des entrées dans `privacyhook/patterns.py`. Pour bloquer autre chose — une commande, un chemin, toute une catégorie d'écritures — utilisez plutôt le [moteur de policy](#moteur-de-policy-tool-call), sans toucher au code.
 
 ---
 

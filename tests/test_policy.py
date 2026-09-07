@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.policy import PolicyEngine, Rule
+from privacyhook.policy import PolicyEngine, Rule
 
 
 @pytest.fixture

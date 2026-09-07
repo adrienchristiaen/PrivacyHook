@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: holdthedoor-policy
+  name: privacyhook-policy
 data:
   policy.yaml: |
     - id: no-prod-deploy-from-laptop

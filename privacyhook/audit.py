@@ -24,10 +24,10 @@ from pathlib import Path
 
 
 def default_audit_path() -> Path:
-    override = os.environ.get("HOLDTHEDOOR_AUDIT_DIR")
+    override = os.environ.get("PRIVACYHOOK_AUDIT_DIR")
     if override:
         return Path(override) / "audit.jsonl"
-    return Path.home() / ".local" / "share" / "holdthedoor" / "audit.jsonl"
+    return Path.home() / ".local" / "share" / "privacyhook" / "audit.jsonl"
 
 
 def generate_key() -> bytes:
@@ -146,7 +146,7 @@ class AuditLog:
 
         generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         meta = (
-            f"# holdthedoor audit export | "
+            f"# privacyhook audit export | "
             f"chain_verified={'true' if ok else 'false'}"
             + (f" ({verify_msg})" if verify_msg else "")
             + f" | events={len(entries)} | generated={generated}"

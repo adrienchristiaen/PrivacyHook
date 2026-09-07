@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "holdthedoor"
+name = "privacyhook"
 version = "0.1.0"
 description = "Privacy-first security layer for AI coding CLIs (Claude Code, Codex, Gemini) via deterministic hooks"
 readme = "README.md"
@@ -17,11 +17,10 @@ dev = ["pytest>=8.0"]
 controlplane = ["pyyaml>=6.0"]
 
 [project.scripts]
-holdthedoor = "holdthedoor.cli:main"
-hold = "holdthedoor.cli:main"
+privacyhook = "privacyhook.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["holdthedoor*"]
+include = ["privacyhook*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "controlplane/tests"]

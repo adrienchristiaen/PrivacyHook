@@ -1,12 +1,12 @@
 """Licensed under the Business Source License 1.1 — see ./LICENSE.
 Free to self-host; may not be resold as a hosted/managed service.
 
-Load a security team's policy.yaml into holdthedoor.policy.Rule objects.
+Load a security team's policy.yaml into privacyhook.policy.Rule objects.
 
 Kept deliberately thin: this module's only job is YAML -> validated Rule
 list + a content hash used as a cache-busting version string. All rule
 semantics (valid actions, match types, matching logic) live in
-holdthedoor.policy so the control plane can never drift from what the
+privacyhook.policy so the control plane can never drift from what the
 client actually enforces.
 """
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from holdthedoor.policy import Rule
+from privacyhook.policy import Rule
 
 
 class PolicyYamlError(ValueError):

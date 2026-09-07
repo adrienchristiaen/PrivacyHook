@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.audit import AuditLog
+from privacyhook.audit import AuditLog
 
 
 @pytest.fixture
@@ -89,7 +89,7 @@ class TestExportCsv:
         assert n == 2
         text = out.read_text()
         lines = text.splitlines()
-        assert lines[0].startswith("# holdthedoor audit export")
+        assert lines[0].startswith("# privacyhook audit export")
         assert "chain_verified=true" in lines[0]
         assert "events=2" in lines[0]
         assert lines[1] == "ts,session,cli,hook,event,tool,categories,count,reason,target"

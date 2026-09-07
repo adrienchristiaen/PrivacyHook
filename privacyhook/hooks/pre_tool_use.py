@@ -31,7 +31,7 @@ def _extract_command(event: dict[str, Any]) -> str | None:
 
 
 def main() -> int:
-    if os.environ.get("HOLDTHEDOOR_DISABLED") == "1":
+    if os.environ.get("PRIVACYHOOK_DISABLED") == "1":
         return 0
     event = read_event()
     tool = normalize_tool(event.get("tool_name"))
@@ -44,7 +44,7 @@ def main() -> int:
             audit.append(
                 hook="pre_tool_use", event="policy_tamper_detected", tool=tool,
                 categories=[], count=0,
-                reason="policy.json signature missing/invalid — rules may have been edited outside holdthedoor",
+                reason="policy.json signature missing/invalid — rules may have been edited outside privacyhook",
                 target=str(policy.path), cli=cli,
             )
         cmd = _extract_command(event) if tool == "Bash" else None
@@ -81,7 +81,7 @@ def main() -> int:
                     hook="pre_tool_use", event="policy_warn", tool=tool, categories=[],
                     count=0, reason=rule.reason or rule.pattern, target=target[:120], cli=cli,
                 )
-                sys.stderr.write(f"holdthedoor: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
+                sys.stderr.write(f"privacyhook: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
         return 0
     finally:
         session.close()

@@ -1,5 +1,5 @@
 # Security team's centrally-managed policy.
-# Same shape as `holdthedoor.policy.Rule`: id, tool, match_type, pattern, action, reason.
+# Same shape as `privacyhook.policy.Rule`: id, tool, match_type, pattern, action, reason.
 # Evaluated first-match-wins, and authoritative over any developer's local policy.json.
 
 - id: no-prod-deploy-from-laptop

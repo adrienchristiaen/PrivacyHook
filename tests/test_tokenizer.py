@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.session import SessionStore
-from holdthedoor.tokenizer import Tokenizer
+from privacyhook.session import SessionStore
+from privacyhook.tokenizer import Tokenizer
 
 
 @pytest.fixture

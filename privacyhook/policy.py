@@ -3,7 +3,7 @@
 Complements `WorkspaceGuard`'s built-in sensitive-path checks with custom
 rules a user can add without touching code: block/warn on a bash command
 regex or a path glob, per tool. Rules are stored as JSON at
-`~/.local/share/holdthedoor/policy.json`, evaluated in file order, first
+`~/.local/share/privacyhook/policy.json`, evaluated in file order, first
 match wins. No match => allow (WorkspaceGuard's built-ins still apply
 independently and cannot be weakened by a policy rule).
 """
@@ -29,10 +29,10 @@ VALID_MATCH_TYPES = {"command_regex", "path_glob"}
 
 
 def default_policy_path() -> Path:
-    override = os.environ.get("HOLDTHEDOOR_POLICY_PATH")
+    override = os.environ.get("PRIVACYHOOK_POLICY_PATH")
     if override:
         return Path(override)
-    return Path.home() / ".local" / "share" / "holdthedoor" / "policy.json"
+    return Path.home() / ".local" / "share" / "privacyhook" / "policy.json"
 
 
 def _key_path(policy_path: Path) -> Path:

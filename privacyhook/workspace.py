@@ -6,7 +6,7 @@ Walks the workspace at startup to build a registry of sensitive files
 to decide whether to let a tool call through.
 
 Lifted from Iris `iris/core/security/workspace_guard.py` minus Iris-specific
-config bits. Patterns sourced from `holdthedoor.patterns`.
+config bits. Patterns sourced from `privacyhook.patterns`.
 """
 
 from __future__ import annotations

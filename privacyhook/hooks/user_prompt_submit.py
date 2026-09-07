@@ -11,7 +11,7 @@ from ._common import block, open_session_and_audit, read_event, write_output
 
 
 def main() -> int:
-    if os.environ.get("HOLDTHEDOOR_DISABLED") == "1":
+    if os.environ.get("PRIVACYHOOK_DISABLED") == "1":
         return 0
     event = read_event()
     prompt = event.get("prompt")
@@ -24,7 +24,7 @@ def main() -> int:
         if not used:
             return 0
         categories = sorted({u.split(":")[1] for u in used})
-        strict = os.environ.get("HOLDTHEDOOR_STRICT") == "1"
+        strict = os.environ.get("PRIVACYHOOK_STRICT") == "1"
         if strict:
             audit.append(
                 hook="user_prompt_submit",
@@ -46,9 +46,9 @@ def main() -> int:
             cli=cli,
         )
         warning = (
-            f"⚠ holdthedoor: {len(used)} sensitive value(s) detected in your prompt "
+            f"⚠ privacyhook: {len(used)} sensitive value(s) detected in your prompt "
             f"(categories: {', '.join(categories)}). The prompt was sent unchanged, "
-            f"but tokens have been recorded for `holdthedoor reveal`."
+            f"but tokens have been recorded for `privacyhook reveal`."
         )
         write_output({
             "hookSpecificOutput": {

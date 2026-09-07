@@ -18,7 +18,7 @@ def session_dir(tmp_path: Path) -> Path:
 def session_env(session_dir: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     sid = "test-session"
     monkeypatch.setenv("CLAUDE_SESSION_ID", sid)
-    monkeypatch.setenv("HOLDTHEDOOR_SESSION_ROOT", str(session_dir))
+    monkeypatch.setenv("PRIVACYHOOK_SESSION_ROOT", str(session_dir))
     return sid
 
 
@@ -26,5 +26,5 @@ def session_env(session_dir: Path, monkeypatch: pytest.MonkeyPatch) -> str:
 def audit_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     d = tmp_path / "audit"
     d.mkdir()
-    monkeypatch.setenv("HOLDTHEDOOR_AUDIT_DIR", str(d))
+    monkeypatch.setenv("PRIVACYHOOK_AUDIT_DIR", str(d))
     return d

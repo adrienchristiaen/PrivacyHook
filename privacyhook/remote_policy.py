@@ -3,8 +3,8 @@
 A security team can run `controlplane/server.py` on a pod and point every
 developer's hook at it via two env vars:
 
-    HOLDTHEDOOR_CONTROLPLANE_URL=https://policy.internal.example.com
-    HOLDTHEDOOR_CONTROLPLANE_TOKEN=<bearer token>
+    PRIVACYHOOK_CONTROLPLANE_URL=https://policy.internal.example.com
+    PRIVACYHOOK_CONTROLPLANE_TOKEN=<bearer token>
 
 Neither is required — with both unset, `RemotePolicySource.fetch()` is a
 no-op and behavior is identical to a plain local install. When set, rules
@@ -35,8 +35,8 @@ _FETCH_TIMEOUT_SECONDS = 2.0
 
 
 def default_cache_path() -> Path:
-    override = os.environ.get("HOLDTHEDOOR_CACHE_DIR")
-    base = Path(override) if override else Path.home() / ".local" / "share" / "holdthedoor"
+    override = os.environ.get("PRIVACYHOOK_CACHE_DIR")
+    base = Path(override) if override else Path.home() / ".local" / "share" / "privacyhook"
     return base / "remote_policy_cache.json"
 
 
@@ -48,9 +48,9 @@ class RemotePolicySource:
 
     def __post_init__(self) -> None:
         if self.url is None:
-            self.url = os.environ.get("HOLDTHEDOOR_CONTROLPLANE_URL") or None
+            self.url = os.environ.get("PRIVACYHOOK_CONTROLPLANE_URL") or None
         if self.token is None:
-            self.token = os.environ.get("HOLDTHEDOOR_CONTROLPLANE_TOKEN") or None
+            self.token = os.environ.get("PRIVACYHOOK_CONTROLPLANE_TOKEN") or None
         if self.cache_path is None:
             self.cache_path = default_cache_path()
 

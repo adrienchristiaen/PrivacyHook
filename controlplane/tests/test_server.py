@@ -20,8 +20,8 @@ def running_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "- id: a\n  tool: Bash\n  match_type: command_regex\n  pattern: rm -rf\n  action: block\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH", str(policy_path))
-    monkeypatch.setenv("HOLDTHEDOOR_CONTROLPLANE_TOKEN", "test-token")
+    monkeypatch.setenv("PRIVACYHOOK_CONTROLPLANE_POLICY_PATH", str(policy_path))
+    monkeypatch.setenv("PRIVACYHOOK_CONTROLPLANE_TOKEN", "test-token")
 
     cp_server._policy_cache.update(mtime=None, version="", rules_json=[])
     cp_server._decision_counts.clear()
@@ -123,7 +123,7 @@ def test_events_increments_metrics(running_server):
     _, metrics_body = _get(f"{base}/metrics")
     text = metrics_body.decode("utf-8")
     assert (
-        'holdthedoor_policy_decisions_total{tenant="default",action="block",tool="Bash",team="sec"} 1'
+        'privacyhook_policy_decisions_total{tenant="default",action="block",tool="Bash",team="sec"} 1'
         in text
     )
 
@@ -158,9 +158,9 @@ def multi_tenant_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         f"- id: globex\n  token: token-b\n  policy_path: {policy_b}\n",
         encoding="utf-8",
     )
-    monkeypatch.delenv("HOLDTHEDOOR_CONTROLPLANE_TOKEN", raising=False)
-    monkeypatch.delenv("HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH", raising=False)
-    monkeypatch.setenv("HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH", str(tenants_path))
+    monkeypatch.delenv("PRIVACYHOOK_CONTROLPLANE_TOKEN", raising=False)
+    monkeypatch.delenv("PRIVACYHOOK_CONTROLPLANE_POLICY_PATH", raising=False)
+    monkeypatch.setenv("PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH", str(tenants_path))
 
     cp_server._policy_cache.clear()
     cp_server._decision_counts.clear()
@@ -206,7 +206,7 @@ def test_multi_tenant_metrics_isolation(multi_tenant_server):
 
 def test_events_rate_limited_after_threshold(running_server, monkeypatch: pytest.MonkeyPatch):
     base, _ = running_server
-    monkeypatch.setenv("HOLDTHEDOOR_CONTROLPLANE_EVENTS_RATE_LIMIT", "3")
+    monkeypatch.setenv("PRIVACYHOOK_CONTROLPLANE_EVENTS_RATE_LIMIT", "3")
 
     for _ in range(3):
         status, _ = _post(

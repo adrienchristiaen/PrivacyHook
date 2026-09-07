@@ -4,10 +4,10 @@ Free to self-host; may not be resold as a hosted/managed service.
 Multi-tenant token/policy mapping for the control plane.
 
 Most deployments are single-tenant: one security team, one token, one
-policy.yaml — that's HOLDTHEDOOR_CONTROLPLANE_TOKEN +
-HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH, unchanged since the MVP. A hoster
+policy.yaml — that's PRIVACYHOOK_CONTROLPLANE_TOKEN +
+PRIVACYHOOK_CONTROLPLANE_POLICY_PATH, unchanged since the MVP. A hoster
 running this for several distinct clients instead points
-HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH at a YAML file listing one
+PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH at a YAML file listing one
 {id, token, policy_path} entry per client. Tokens and ids must be unique —
 a leaked or malicious token from one tenant must never resolve to another
 tenant's policy or metrics.
@@ -80,15 +80,15 @@ def _load_multi_tenant(path: Path) -> list[Tenant]:
 
 def load_tenants() -> list[Tenant]:
     """Return the configured tenants: multi-tenant file if
-    HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH is set, else a single legacy
-    tenant from HOLDTHEDOOR_CONTROLPLANE_TOKEN/_POLICY_PATH, else []."""
-    tenants_path = os.environ.get("HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH")
+    PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH is set, else a single legacy
+    tenant from PRIVACYHOOK_CONTROLPLANE_TOKEN/_POLICY_PATH, else []."""
+    tenants_path = os.environ.get("PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH")
     if tenants_path:
         return _load_multi_tenant(Path(tenants_path))
 
-    policy_path = os.environ.get("HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH")
+    policy_path = os.environ.get("PRIVACYHOOK_CONTROLPLANE_POLICY_PATH")
     if policy_path:
-        token = os.environ.get("HOLDTHEDOOR_CONTROLPLANE_TOKEN") or None
+        token = os.environ.get("PRIVACYHOOK_CONTROLPLANE_TOKEN") or None
         return [Tenant(id="default", token=token, policy_path=Path(policy_path))]
 
     return []

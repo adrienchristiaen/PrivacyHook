@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from holdthedoor import patterns
+from privacyhook import patterns
 
 
 class TestSecretPatterns:

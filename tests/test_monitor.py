@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.audit import AuditLog, generate_key
-from holdthedoor.monitor import _Handler
+from privacyhook.audit import AuditLog, generate_key
+from privacyhook.monitor import _Handler
 
 
 @pytest.fixture
 def running_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("HOLDTHEDOOR_AUDIT_DIR", str(tmp_path))
+    monkeypatch.setenv("PRIVACYHOOK_AUDIT_DIR", str(tmp_path))
     key_path = tmp_path / "hmac.key"
     key = generate_key()
     key_path.write_bytes(key)
@@ -42,7 +42,7 @@ class TestMonitorServer:
     def test_serves_html_page(self, running_server: str):
         r = urllib.request.urlopen(f"{running_server}/")
         assert r.status == 200
-        assert b"holdthedoor monitor" in r.read()
+        assert b"privacyhook monitor" in r.read()
 
     def test_api_events_returns_entries(self, running_server: str):
         r = urllib.request.urlopen(f"{running_server}/api/events?last=10")

@@ -1,6 +1,6 @@
 {
-  "title": "holdthedoor control plane",
-  "uid": "holdthedoor-controlplane",
+  "title": "privacyhook control plane",
+  "uid": "privacyhook-controlplane",
   "schemaVersion": 39,
   "version": 1,
   "editable": true,
@@ -13,7 +13,7 @@
         "name": "tenant",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "query": "label_values(holdthedoor_policy_decisions_total, tenant)",
+        "query": "label_values(privacyhook_policy_decisions_total, tenant)",
         "includeAll": true,
         "multi": true,
         "current": { "text": "All", "value": "$__all" }
@@ -34,7 +34,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate(holdthedoor_policy_decisions_total{tenant=~\"$tenant\"}[5m])) by (action)",
+          "expr": "sum(rate(privacyhook_policy_decisions_total{tenant=~\"$tenant\"}[5m])) by (action)",
           "legendFormat": "{{action}}"
         }
       ]
@@ -47,7 +47,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "sum(increase(holdthedoor_policy_decisions_total{tenant=~\"$tenant\",action=\"block\"}[24h])) by (tool)",
+          "expr": "sum(increase(privacyhook_policy_decisions_total{tenant=~\"$tenant\",action=\"block\"}[24h])) by (tool)",
           "legendFormat": "{{tool}}"
         }
       ]
@@ -60,7 +60,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "sum(increase(holdthedoor_policy_decisions_total{tenant=~\"$tenant\"}[24h])) by (team, action)",
+          "expr": "sum(increase(privacyhook_policy_decisions_total{tenant=~\"$tenant\"}[24h])) by (team, action)",
           "format": "table",
           "instant": true
         }
@@ -74,7 +74,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
-          "expr": "sum(increase(holdthedoor_policy_decisions_total{tenant=~\"$tenant\"}[24h]))"
+          "expr": "sum(increase(privacyhook_policy_decisions_total{tenant=~\"$tenant\"}[24h]))"
         }
       ]
     }

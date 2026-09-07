@@ -2,7 +2,7 @@
 
 This repository has two licenses, split by directory:
 
-**`holdthedoor/` (the CLI, hooks, local policy engine, audit log, `monitor.py`
+**`privacyhook/` (the CLI, hooks, local policy engine, audit log, `monitor.py`
 dashboard) — MIT** (see [`LICENSE`](LICENSE)). Free for any use, forever, no
 restrictions. This is the wedge product: install it, run it locally, get value
 with zero setup.

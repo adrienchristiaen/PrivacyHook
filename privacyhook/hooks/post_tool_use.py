@@ -25,7 +25,7 @@ def _extract_output(event: dict[str, Any]) -> str | None:
 
 
 def main() -> int:
-    if os.environ.get("HOLDTHEDOOR_DISABLED") == "1":
+    if os.environ.get("PRIVACYHOOK_DISABLED") == "1":
         return 0
     event = read_event()
     tool = normalize_tool(event.get("tool_name"))

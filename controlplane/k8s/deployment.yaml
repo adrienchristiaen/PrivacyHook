@@ -1,43 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: holdthedoor-controlplane
+  name: privacyhook-controlplane
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: holdthedoor-controlplane
+      app: privacyhook-controlplane
   template:
     metadata:
       labels:
-        app: holdthedoor-controlplane
+        app: privacyhook-controlplane
     spec:
       containers:
         - name: controlplane
-          image: holdthedoor-controlplane:latest
+          image: privacyhook-controlplane:latest
           ports:
             - containerPort: 8957
           env:
             # Single-tenant (default): one team, one policy, one token.
-            - name: HOLDTHEDOOR_CONTROLPLANE_POLICY_PATH
-              value: /etc/holdthedoor/policy.yaml
-            - name: HOLDTHEDOOR_CONTROLPLANE_TOKEN
+            - name: PRIVACYHOOK_CONTROLPLANE_POLICY_PATH
+              value: /etc/privacyhook/policy.yaml
+            - name: PRIVACYHOOK_CONTROLPLANE_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: holdthedoor-controlplane-token
+                  name: privacyhook-controlplane-token
                   key: token
             # Multi-tenant (hosting several distinct clients): comment out
             # the two vars above, uncomment this one, and mount each
             # tenant's policy.yaml + tenants.yaml per k8s/tenants-example.yaml.
-            # - name: HOLDTHEDOOR_CONTROLPLANE_TENANTS_PATH
-            #   value: /etc/holdthedoor/tenants.yaml
+            # - name: PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH
+            #   value: /etc/privacyhook/tenants.yaml
           volumeMounts:
             - name: policy
-              mountPath: /etc/holdthedoor
+              mountPath: /etc/privacyhook
               readOnly: true
             # Multi-tenant: also mount the tenants Secret, e.g.
             # - name: tenants
-            #   mountPath: /etc/holdthedoor/tenants.yaml
+            #   mountPath: /etc/privacyhook/tenants.yaml
             #   subPath: tenants.yaml
             #   readOnly: true
           readinessProbe:
@@ -51,4 +51,4 @@ spec:
       volumes:
         - name: policy
           configMap:
-            name: holdthedoor-policy
+            name: privacyhook-policy

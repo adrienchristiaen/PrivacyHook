@@ -28,8 +28,8 @@ def _run_hook(module: str, payload: dict, env: dict[str, str]) -> tuple[int, str
 def hook_env(tmp_path: Path) -> dict[str, str]:
     return {
         "CLAUDE_SESSION_ID": "hook-test",
-        "HOLDTHEDOOR_SESSION_ROOT": str(tmp_path / "sess"),
-        "HOLDTHEDOOR_AUDIT_DIR": str(tmp_path / "audit"),
+        "PRIVACYHOOK_SESSION_ROOT": str(tmp_path / "sess"),
+        "PRIVACYHOOK_AUDIT_DIR": str(tmp_path / "audit"),
         "PYTHONPATH": str(Path(__file__).parent.parent.parent),
     }
 
@@ -37,7 +37,7 @@ def hook_env(tmp_path: Path) -> dict[str, str]:
 class TestPostToolUse:
     def test_redacts_secret_in_bash_output(self, hook_env):
         payload = json.loads((FIX / "post_bash_secret.json").read_text())
-        rc, out, err = _run_hook("holdthedoor.hooks.post_tool_use", payload, hook_env)
+        rc, out, err = _run_hook("privacyhook.hooks.post_tool_use", payload, hook_env)
         assert rc == 0, f"stderr: {err}"
         result = json.loads(out)
         updated = result["hookSpecificOutput"]["updatedToolOutput"]
@@ -48,7 +48,7 @@ class TestPostToolUse:
 
     def test_passthrough_when_clean(self, hook_env):
         payload = json.loads((FIX / "post_bash_clean.json").read_text())
-        rc, out, err = _run_hook("holdthedoor.hooks.post_tool_use", payload, hook_env)
+        rc, out, err = _run_hook("privacyhook.hooks.post_tool_use", payload, hook_env)
         assert rc == 0
         # Empty or no modification when no matches
         if out.strip():
@@ -62,6 +62,6 @@ class TestPostToolUse:
             "tool_name": "Edit",
             "tool_response": {"stdout": "API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL"},
         }
-        rc, out, _ = _run_hook("holdthedoor.hooks.post_tool_use", payload, hook_env)
+        rc, out, _ = _run_hook("privacyhook.hooks.post_tool_use", payload, hook_env)
         assert rc == 0
         assert out.strip() == "" or "updatedToolOutput" not in out

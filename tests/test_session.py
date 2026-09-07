@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from holdthedoor.session import SessionStore, resolve_session_id
+from privacyhook.session import SessionStore, resolve_session_id
 
 
 class TestResolveSessionId:
