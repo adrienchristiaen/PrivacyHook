@@ -135,6 +135,7 @@ a duplicate of either is rejected at startup. See
 docker build -t privacyhook-controlplane:latest -f controlplane/Dockerfile .
 kubectl create secret generic privacyhook-controlplane-token --from-literal=token=<your-token>
 kubectl apply -f controlplane/k8s/configmap-example.yaml
+kubectl apply -f controlplane/k8s/pvc.yaml
 kubectl apply -f controlplane/k8s/deployment.yaml
 kubectl apply -f controlplane/k8s/service.yaml
 ```
