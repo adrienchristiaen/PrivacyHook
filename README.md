@@ -13,7 +13,7 @@
 [![tests](https://img.shields.io/badge/tests-122%20passed-brightgreen)](#testing)
 [![python](https://img.shields.io/badge/python-3.11+-blue)](#requirements)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![CLIs](https://img.shields.io/badge/CLIs-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20OpenCode-blueviolet)](#supported-clis)
+[![CLIs](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20Copilot%20%C2%B7%20Cursor%20%C2%B7%20Vibe%20%C2%B7%20%2B4-blueviolet)](#supported-clis)
 
 **Read in:** [Français](docs/README.fr.md) · [中文](docs/README.zh.md) · [日本語](docs/README.ja.md)
 
@@ -52,12 +52,25 @@ AI coding agents read your filesystem, run shell commands, and fetch web pages �
 
 ## Supported CLIs
 
-| CLI | Hook support | Notes |
-|---|---|---|
-| **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** | Full (3 hooks) | `PostToolUse`, `PreToolUse`, `UserPromptSubmit` |
-| **[OpenAI Codex CLI](https://openai.com/codex)** | Full (3 hooks) | Same hook format as Claude Code |
-| **[Gemini CLI](https://gemini.google.com/cli)** | Partial (2 hooks) | `BeforeTool`, `AfterTool` — no prompt hook |
-| **[OpenCode](https://opencode.ai)** | Partial (2 hooks) | JS plugin bridging `tool.execute.before` / `tool.execute.after` to the same Python hooks — no prompt hook |
+What each agent lets a hook do differs, so coverage differs. This table is what privacyhook actually does with each one, not what we would like it to do.
+
+| Agent | `--cli` | Tool calls recorded | Sensitive paths / commands (block or `would_block`) | Secrets in tool output | Secrets in prompts |
+|---|---|---|---|---|---|
+| **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** | `claude` | ✓ | ✓ | masked | ✓ |
+| **[OpenAI Codex CLI](https://openai.com/codex)** | `codex` | ✓ | ✓ | masked | ✓ |
+| **[Gemini CLI](https://gemini.google.com/cli)** | `gemini` | ✓ | ✓ | masked | — no prompt hook |
+| **[OpenCode](https://opencode.ai)** | `opencode` | ✓ | ✓ | masked | — no prompt hook |
+| **[GitHub Copilot CLI](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)** | `copilot` | ✓ | ✓ | masked | detected (Copilot ignores prompt-hook answers, so strict mode cannot stop it) |
+| **[Mistral Vibe](https://github.com/mistralai/mistral-vibe)** | `vibe` | ✓ | ✓ | masked | — no prompt hook |
+| **[Cursor](https://cursor.com/docs/agent/hooks)** | `cursor` | shell commands, file reads | ✓ | detected only¹ | ✓ |
+| **[Windsurf](https://docs.devin.ai/desktop/cascade/hooks)** | `windsurf` | commands, file reads and writes | ✓ | — ² | ✓ |
+| **[Cline](https://docs.cline.bot/customization/hooks)** | `cline` | ✓ | ✓ | detected only¹ | ✓ |
+| **[Aider](https://aider.chat)** | — | not supported: Aider has no hook API to plug into | | | |
+
+¹ Cursor and Cline let a hook read a tool result but not change it. The secret still reaches the model; privacyhook records a `secret_detected` event (shown on the team dashboard) instead of masking it.
+² Windsurf's post-command hook does not include the command's output.
+
+"Masked" means the secret is replaced by a reversible token like `[WALL:openai_key:1]` before the model sees it. Cline runs hooks only when hooks are enabled in its settings.
 
 ---
 
@@ -67,7 +80,7 @@ AI coding agents read your filesystem, run shell commands, and fetch web pages �
 |---|---|---|
 | **PostToolUse / AfterTool / tool.execute.after** | After `Bash` / `Read` / `WebFetch` (or CLI equivalents) | Replaces detected secrets in tool output with reversible session tokens like `[WALL:openai_key:1]` before the LLM sees them. |
 | **PreToolUse / BeforeTool / tool.execute.before** | Before any file/shell tool call | Blocks calls targeting sensitive paths (`.env`, SSH keys, credentials, `*.pem`) **and** evaluates your custom [policy rules](#tool-call-policy-engine). Exit code 2 (or a thrown error for OpenCode) = CLI aborts the call. |
-| **UserPromptSubmit** | Every user prompt (Claude Code + Codex only) | Scans your prompt for structured secrets. Warns by default, blocks in strict mode. |
+| **UserPromptSubmit** | Every user prompt (agents with a prompt hook, see [Supported CLIs](#supported-clis)) | Scans your prompt for structured secrets. Warns by default, blocks in strict mode. |
 
 Blocking only happens in **enforce** mode. Out of the box privacyhook runs in **observe** mode: the same checks run, but a hit is logged as `would_block` and the call goes through — see [Observe vs enforce](#observe-vs-enforce).
 
@@ -140,7 +153,7 @@ This is the mechanism to reach for when the built-in checks aren't enough for yo
 ## Requirements
 
 - Python 3.11+
-- One of: Claude Code CLI, OpenAI Codex CLI, Gemini CLI, OpenCode
+- One of: Claude Code, OpenAI Codex CLI, Gemini CLI, OpenCode, GitHub Copilot CLI, Cursor, Windsurf, Mistral Vibe, Cline
 - Zero external Python dependencies — stdlib only (`sqlite3`, `hmac`, `re`, `json`)
 
 ---
@@ -209,6 +222,11 @@ privacyhook install --cli claude     # Claude Code only
 privacyhook install --cli codex      # Codex CLI only
 privacyhook install --cli gemini     # Gemini CLI only
 privacyhook install --cli opencode   # OpenCode only (writes a JS plugin, not a JSON hook)
+privacyhook install --cli copilot    # GitHub Copilot CLI (~/.copilot/hooks/privacyhook.json, honors $COPILOT_HOME)
+privacyhook install --cli cursor     # Cursor (~/.cursor/hooks.json)
+privacyhook install --cli windsurf   # Windsurf (~/.codeium/windsurf/hooks.json)
+privacyhook install --cli vibe       # Mistral Vibe (a marked [[hooks]] block in ~/.vibe/hooks.toml, honors $VIBE_HOME)
+privacyhook install --cli cline      # Cline (hook scripts in ~/Documents/Cline/Hooks)
 privacyhook install --cli all        # all detected CLIs
 ```
 
@@ -244,7 +262,7 @@ Open a new CLI session — hooks activate automatically.
 
 | Command | What it does |
 |---|---|
-| `privacyhook status [--cli auto\|claude\|codex\|gemini\|opencode\|all]` | Installed hooks per CLI, session DB path, last 5 audit events. |
+| `privacyhook status [--cli auto\|all\|claude\|codex\|gemini\|opencode\|copilot\|cursor\|windsurf\|vibe\|cline]` | Installed hooks per CLI, session DB path, last 5 audit events. |
 | `privacyhook reveal <token>` | Print the original value behind a session token (session-scoped — dies with the session). |
 | `privacyhook audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
 | `privacyhook audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
@@ -385,16 +403,19 @@ privacyhook/
 ├── audit.py       # HMAC-chained JSONL log + verify() + export_csv()
 ├── workspace.py   # workspace scan + check_path / check_bash (built-in rules)
 ├── policy.py      # user-defined allow/warn/block rules (policy engine)
-├── settings.py    # multi-CLI install / uninstall (Claude/Codex/Gemini/OpenCode adapters)
+├── settings.py    # multi-CLI install / uninstall (one adapter per agent)
 ├── cli.py         # argparse entry point
 └── hooks/
     ├── _common.py             # stdin/stdout JSON, session, tool name normalization
+    ├── adapters.py            # each agent's payload ↔ the Claude Code shape, and its deny/redact answers
     ├── post_tool_use.py       # AfterTool / PostToolUse / tool.execute.after
     ├── pre_tool_use.py        # BeforeTool / PreToolUse / tool.execute.before
     └── user_prompt_submit.py  # UserPromptSubmit (Claude Code + Codex)
 ```
 
 For every JSON-hooks-array CLI (Claude/Codex/Gemini), `install` writes a hook entry that spawns `python -m privacyhook.hooks.<name> --cli <cli>` per event. OpenCode is the one exception: it loads a JS plugin directly into its own process, so `install --cli opencode` instead generates a thin JS shim (`~/.config/opencode/plugin/privacyhook.js`) that shells out to the same Python hook modules — no logic duplicated in JS.
+
+Cursor, Copilot CLI, Windsurf, Vibe and Cline each send their own JSON shape and expect their own answer (`permission: deny`, `permissionDecision`, `decision: deny`, `cancel: true`, or exit code 2). `hooks/adapters.py` translates both directions, so the detection and policy logic is written once. Cursor, Copilot and Windsurf get entries in their JSON hooks file, Vibe gets a marked `[[hooks]]` block in `hooks.toml`, and Cline gets one small script per event; `uninstall` removes only what privacyhook wrote.
 
 ### CLI adapter mapping
 
@@ -458,14 +479,16 @@ pytest -q   # 122 passed
 1. LLM reads secrets via tool output → PostToolUse/AfterTool/tool.execute.after redaction
 2. LLM reads `.env` / SSH keys → PreToolUse/BeforeTool/tool.execute.before block
 3. LLM runs a command or touches a path your team has flagged → policy engine block/warn
-4. Secrets in prompts → UserPromptSubmit scan (Claude Code + Codex)
+4. Secrets in prompts → prompt scan (Claude Code, Codex, Cursor, Windsurf, Cline; detection only on Copilot CLI)
 5. Post-hoc log tampering → HMAC-chained audit
 
 **Not mitigated:**
 - Copy-paste propagation (LLM copies secret to another file)
 - Full filesystem isolation (use a container)
 - Novel secret formats not in `patterns.py`
-- Gemini CLI / OpenCode prompts (no `UserPromptSubmit` equivalent)
+- Gemini CLI / OpenCode / Mistral Vibe prompts (no prompt hook)
+- Secrets in tool output on Cursor and Cline (detected and recorded, not masked) and on Windsurf (output not visible to hooks)
+- Aider (no hook API)
 - A user with local write access editing `policy.json` or the hooks themselves — this protects against the *LLM* bypassing controls, not against a malicious local operator
 
 ---
@@ -474,6 +497,7 @@ pytest -q   # 122 passed
 
 - [x] Compliance/audit export (SOC2-style CSV report from the HMAC log)
 - [x] OpenCode adapter
+- [x] GitHub Copilot CLI, Cursor, Windsurf, Mistral Vibe and Cline adapters
 - [ ] Ollama contextual rewriting (200 ms timeout, regex fallback)
 - [ ] `Stop` hook with per-session redaction summary
 - [ ] Homebrew formula + PyPI release

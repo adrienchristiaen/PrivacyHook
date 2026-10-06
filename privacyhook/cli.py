@@ -47,6 +47,7 @@ _EVENT_ICON = {
     "block": RED("✗"),
     "policy_block": RED("✗"),
     "redact": YELLOW("⚙"),
+    "secret_detected": RED("⚠"),
     "warn": YELLOW("⚠"),
     "policy_warn": YELLOW("⚠"),
     "would_block": YELLOW("◌"),
@@ -92,7 +93,7 @@ def _fmt_event(e: dict) -> str:
     elif event == "policy_warn":
         target_str = f"  {DIM(target)}" if target else ""
         detail = f"{BOLD(tool)}{target_str}  →  {reason or 'policy warning'}"
-    elif event in ("redact", "warn") and cats:
+    elif event in ("redact", "warn", "secret_detected") and cats:
         tokens = ", ".join(f"[WALL:{c}:*]" for c in cats[:3])
         detail = f"{BOLD(tool)}  →  {count}× {', '.join(cats)}  ({tokens})"
     else:
@@ -134,7 +135,8 @@ def cmd_install(args: argparse.Namespace) -> int:
         report = S.install(cli=cli, dry_run=True, yes=args.yes)
         if args.dry_run:
             print(f"--- {cli} ({report['path']}) ---")
-            print(json.dumps(report["after"], indent=2))
+            after = report["after"]
+            print(after if isinstance(after, str) else json.dumps(after, indent=2))
             continue
         if not _confirm(
             f"register privacyhook hooks in {report['path']}?", args.yes
@@ -289,7 +291,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
     redacts = sum(1 for e in entries if e.get("event") == "redact")
     warns   = sum(1 for e in entries if e.get("event") == "warn")
     would   = sum(1 for e in entries if e.get("event") in ("would_block", "would_policy_block"))
-    tokens_total = sum(e.get("count", 0) for e in entries if e.get("event") in ("redact", "warn"))
+    tokens_total = sum(e.get("count", 0) for e in entries if e.get("event") in ("redact", "warn", "secret_detected"))
 
     print()
     print(BOLD(f"SESSION AUDIT") + DIM(f"  —  {n} event{'s' if n != 1 else ''}"))

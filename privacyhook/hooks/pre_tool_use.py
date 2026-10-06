@@ -11,7 +11,7 @@ from ..audit import audit_session_id
 from ..policy import PolicyEngine
 from ..team import record as team_record
 from ..workspace import WorkspaceGuard
-from ._common import deny, normalize_tool, open_session_and_audit, read_event
+from ._common import run, deny, normalize_tool, open_session_and_audit, read_event
 
 
 def _extract_path(event: dict[str, Any]) -> str | None:
@@ -97,4 +97,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run(main))

@@ -7,7 +7,8 @@ import sys
 from typing import Any
 
 from ..tokenizer import Tokenizer
-from ._common import deny, open_session_and_audit, read_event, write_output
+from . import adapters
+from ._common import run, deny, open_session_and_audit, read_event, write_output
 
 
 def main() -> int:
@@ -52,16 +53,11 @@ def main() -> int:
             f"(categories: {', '.join(categories)}). The prompt was sent unchanged, "
             f"but tokens have been recorded for `privacyhook reveal`."
         )
-        write_output({
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": warning,
-            }
-        })
+        write_output(adapters.render_prompt_warning(cli, warning))
         return 0
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run(main))

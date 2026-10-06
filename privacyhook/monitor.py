@@ -54,6 +54,7 @@ _PAGE = """<!doctype html>
   .block, .policy_block { color: #f85149; }
   .warn, .policy_warn { color: #d29922; }
   .redact { color: #58a6ff; }
+  .secret_detected { color: #f0883e; }
   .would_block, .would_policy_block { color: #d29922; font-style: italic; }
   .allow { color: #3fb950; }
   .policy_tamper_detected { color: #f0883e; font-weight: bold; }
@@ -76,6 +77,7 @@ _PAGE = """<!doctype html>
       <option value="warn">warn</option>
       <option value="policy_warn">policy_warn</option>
       <option value="redact">redact</option>
+      <option value="secret_detected">secret_detected</option>
       <option value="allow">allow</option>
       <option value="policy_tamper_detected">policy_tamper_detected</option>
     </select>
