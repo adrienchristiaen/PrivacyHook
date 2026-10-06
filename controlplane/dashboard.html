@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>privacyhook — team</title>
+<title>bodycam — team</title>
 <style>
   :root {
     --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e5e5e2;
@@ -69,7 +69,7 @@
 <body>
 
 <form id="login" hidden>
-  <h1>privacyhook team dashboard</h1>
+  <h1>bodycam team dashboard</h1>
   <p>Enter your team token to see what your AI coding agents are doing.</p>
   <input id="token" type="password" placeholder="team token" autocomplete="current-password" required>
   <button class="primary" type="submit">Open dashboard</button>
@@ -78,7 +78,7 @@
 
 <div id="app" hidden>
   <header>
-    <h1>privacyhook</h1><span class="sub">team activity</span>
+    <h1>bodycam</h1><span class="sub">team activity</span>
     <span class="spacer"></span>
     <select id="range" aria-label="time range">
       <option value="24">Last 24 hours</option>
@@ -187,7 +187,7 @@ function renderPeople(rows) {
   const tb = $("people"); tb.replaceChildren();
   if (!rows.length) {
     const td = el("td", { colspan: "8", class: "empty" }, "No activity yet. Each developer runs ",
-      el("code", {}, `privacyhook join ${location.origin} --token <team token>`), " once.");
+      el("code", {}, `bodycam join ${location.origin} --token <team token>`), " once.");
     tb.append(el("tr", {}, td)); return;
   }
   for (const p of rows) {

@@ -188,7 +188,7 @@ def block(reason: str, *, prompt: bool = False) -> None:
     # Cursor/Copilot/Vibe/Cline a JSON answer, Windsurf exit 2.
     payload, code = adapters.render_deny(_cli_from_argv(), reason, prompt=prompt)
     write_output(payload)
-    sys.stderr.write(f"privacyhook: {reason}\n")
+    sys.stderr.write(f"bodycam: {reason}\n")
     sys.exit(code)
 
 
@@ -202,4 +202,4 @@ def deny(audit: AuditLog, *, hook: str, event: str, message: str, **fields: Any)
         audit.append(hook=hook, event=event, **fields)
         block(message, prompt=hook == "user_prompt_submit")
     audit.append(hook=hook, event=f"would_{event}", **fields)
-    sys.stderr.write(f"privacyhook (observe mode, not blocked): {message}\n")
+    sys.stderr.write(f"bodycam (observe mode, not blocked): {message}\n")

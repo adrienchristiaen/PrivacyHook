@@ -49,9 +49,9 @@ def main() -> int:
                 cli=cli,
             )
         warning = (
-            f"⚠ privacyhook: {len(used)} sensitive value(s) detected in your prompt "
+            f"⚠ bodycam: {len(used)} sensitive value(s) detected in your prompt "
             f"(categories: {', '.join(categories)}). The prompt was sent unchanged, "
-            f"but tokens have been recorded for `privacyhook reveal`."
+            f"but tokens have been recorded for `bodycam reveal`."
         )
         write_output(adapters.render_prompt_warning(cli, warning))
         return 0

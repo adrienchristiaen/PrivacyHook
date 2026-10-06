@@ -1,6 +1,6 @@
-# privacyhook control plane
+# bodycam control plane
 
-The team side of privacyhook: one small service that gives a whole team (or a
+The team side of bodycam: one small service that gives a whole team (or a
 data platform group) a shared dashboard of what their AI coding agents do, and
 optionally pushes central rules to every developer.
 
@@ -14,7 +14,7 @@ Only metadata reaches the server (event type, tool name, agent, developer,
 secret categories and counts, policy rule reasons). Commands, file paths,
 prompts and secret values never leave developers' machines.
 
-This is a separate deployable from the `privacyhook` pip package. The CLI
+This is a separate deployable from the `bodycam` pip package. The CLI
 and hooks stay fully usable (and MIT-licensed) without it.
 
 ## Set up a team in two steps
@@ -33,13 +33,13 @@ No policy file is needed to start. Put it behind your usual TLS proxy (see
 **2. Each developer, once:**
 
 ```bash
-privacyhook join https://privacyhook.acme.internal --token <team-token>
+bodycam join https://privacyhook.acme.internal --token <team-token>
 ```
 
 That checks the token, installs the hooks for every detected agent CLI, and
 starts sending activity metadata. The developer appears under their OS
-username (`--name` to change it). `privacyhook status` shows the connection,
-`privacyhook leave` stops syncing.
+username (`--name` to change it). `bodycam status` shows the connection,
+`bodycam leave` stops syncing.
 
 Open `https://privacyhook.acme.internal/` and enter the team token to see the
 dashboard. Events are queued locally and sent in the background by a
@@ -58,8 +58,8 @@ python -m controlplane.server
 Point a developer's hook at it:
 
 ```bash
-privacyhook join http://127.0.0.1:8957 --token dev-token
-privacyhook status   # TEAM: connected
+bodycam join http://127.0.0.1:8957 --token dev-token
+bodycam status   # TEAM: connected
 ```
 
 `PRIVACYHOOK_CONTROLPLANE_URL` / `PRIVACYHOOK_CONTROLPLANE_TOKEN` env vars
@@ -134,8 +134,8 @@ a duplicate of either is rejected at startup. See
 ### Helm (recommended)
 
 ```bash
-helm install privacyhook oci://ghcr.io/adrienchristiaen/charts/privacyhook-controlplane \
-  --namespace privacyhook --create-namespace \
+helm install bodycam oci://ghcr.io/adrienchristiaen/charts/privacyhook-controlplane \
+  --namespace bodycam --create-namespace \
   --set token.value=<team-token> \
   --set ingress.enabled=true --set ingress.host=privacyhook.acme.internal \
   --set ingress.tls.secretName=privacyhook-tls
@@ -164,7 +164,7 @@ to render `replicaCount > 1` without Postgres.
 wraps the chart in a `helm_release`, with secrets passed as `set_sensitive`:
 
 ```hcl
-module "privacyhook" {
+module "bodycam" {
   source = "github.com/adrienchristiaen/PrivacyHook//deploy/terraform/privacyhook-controlplane"
 
   team_token    = var.team_token
@@ -226,8 +226,8 @@ event type, including `tool_call` and `would_block`). Import
 
 **OpenTelemetry** — set `PRIVACYHOOK_CONTROLPLANE_OTLP_ENDPOINT` (or the
 standard `OTEL_EXPORTER_OTLP_ENDPOINT`) to an OTLP/HTTP collector. Every event
-is forwarded as a log record (`service.name=privacyhook-controlplane`;
-attributes `privacyhook.event`, `privacyhook.tool`, `privacyhook.cli`,
+is forwarded as a log record (`service.name=bodycam-server`;
+attributes `bodycam.event`, `bodycam.tool`, `bodycam.cli`,
 `privacyhook.rule`, `privacyhook.secret_categories`, `enduser.id`,
 `session.id`, …; severity WARN for would-block, ERROR for blocks). Headers such
 as API keys go in `PRIVACYHOOK_CONTROLPLANE_OTLP_HEADERS="key=value,…"`.
@@ -250,6 +250,6 @@ Also accepted: `since` / `until` (Unix seconds) and `limit` (max 100000).
 **Your own panel** — `GET /v1/summary?hours=24` and `GET /v1/events?limit=&user=`
 return the same JSON the built-in dashboard uses.
 
-**Developer fleets and CI** — instead of `privacyhook join`, managed laptops
+**Developer fleets and CI** — instead of `bodycam join`, managed laptops
 (MDM) and CI runners can set `PRIVACYHOOK_CONTROLPLANE_URL`,
 `PRIVACYHOOK_CONTROLPLANE_TOKEN` and optionally `PRIVACYHOOK_USER`.

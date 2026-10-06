@@ -30,7 +30,7 @@ _PAGE = """<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>privacyhook monitor</title>
+<title>bodycam monitor</title>
 <style>
   :root { color-scheme: light dark; }
   body { font: 13px/1.4 ui-monospace, monospace; margin: 0; padding: 1.5rem;
@@ -64,7 +64,7 @@ _PAGE = """<!doctype html>
 </style>
 </head>
 <body>
-  <h1>privacyhook monitor</h1>
+  <h1>bodycam monitor</h1>
   <div class="sub">live audit log — local only</div>
   <div class="bar">
     <input id="q" placeholder="filter (tool, reason, session...)" size="28">
@@ -219,11 +219,11 @@ def serve(host: str = "127.0.0.1", port: int = 8956, *, open_browser: bool = Fal
                 raise
     if server is None:
         raise SystemExit(
-            f"privacyhook: ports {tried[0]}-{tried[-1]} all in use. "
+            f"bodycam: ports {tried[0]}-{tried[-1]} all in use. "
             f"Pass --port to pick one explicitly."
         )
     url = f"http://{host}:{port}/"
-    print(f"privacyhook monitor  —  {url}  (Ctrl-C to stop)")
+    print(f"bodycam monitor  —  {url}  (Ctrl-C to stop)")
     if open_browser:
         import webbrowser
         threading.Timer(0.3, lambda: webbrowser.open(url)).start()
