@@ -11,6 +11,7 @@ export CLAUDE_SESSION_ID="demo-$$"
 export PRIVACYHOOK_SESSION_ROOT="$TMP/sess"
 export PRIVACYHOOK_AUDIT_DIR="$TMP/audit"
 export PRIVACYHOOK_SETTINGS_PATH="$TMP/settings.json"
+export PRIVACYHOOK_MODE=enforce  # demo shows blocking; the default is observe (log-only)
 
 echo "=== 1. PostToolUse redact ==="
 echo '{"tool_name":"Bash","tool_response":{"stdout":"OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL\nemail=alice@example.com"}}' \

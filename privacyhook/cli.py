@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from pathlib import Path
 
 from . import settings as S
 from .audit import AuditLog, generate_key
+from .mode import ENFORCE, VALID_MODES, current_mode, set_mode
 from .policy import Rule, PolicyEngine, VALID_ACTIONS, VALID_MATCH_TYPES
 from .remote_policy import RemotePolicySource
 from .session import SessionStore, session_db_path, session_root
@@ -46,6 +48,8 @@ _EVENT_ICON = {
     "redact": YELLOW("⚙"),
     "warn": YELLOW("⚠"),
     "policy_warn": YELLOW("⚠"),
+    "would_block": YELLOW("◌"),
+    "would_policy_block": YELLOW("◌"),
     "allow": GREEN("✓"),
 }
 _HOOK_SHORT = {
@@ -81,7 +85,7 @@ def _fmt_event(e: dict) -> str:
     target  = e.get("target", "")
 
     # detail line
-    if event in ("block", "policy_block"):
+    if event in ("block", "policy_block", "would_block", "would_policy_block"):
         target_str = f"  {DIM(target)}" if target else ""
         detail = f"{BOLD(tool)}{target_str}  →  {reason or 'blocked'}"
     elif event == "policy_warn":
@@ -165,6 +169,10 @@ def cmd_status(args: argparse.Namespace) -> int:
         if st["hooks"]:
             print(f"  hooks: {DIM(' · '.join(st['hooks']))}")
         print()
+
+    # ── mode ─────────────────────────────────────────────────────────────────
+    print(BOLD("MODE") + f"  {_mode_label(current_mode())}")
+    print()
 
     # ── control plane ────────────────────────────────────────────────────────
     remote = RemotePolicySource()
@@ -273,6 +281,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
     blocks  = sum(1 for e in entries if e.get("event") == "block")
     redacts = sum(1 for e in entries if e.get("event") == "redact")
     warns   = sum(1 for e in entries if e.get("event") == "warn")
+    would   = sum(1 for e in entries if e.get("event") in ("would_block", "would_policy_block"))
     tokens_total = sum(e.get("count", 0) for e in entries if e.get("event") in ("redact", "warn"))
 
     print()
@@ -289,6 +298,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
     parts = []
     if blocks:
         parts.append(RED(f"{blocks} blocked"))
+    if would:
+        parts.append(YELLOW(f"{would} would have been blocked (observe mode)"))
     if redacts:
         parts.append(YELLOW(f"{redacts} redacted"))
     if warns:
@@ -400,6 +411,22 @@ def cmd_policy_test(args: argparse.Namespace) -> int:
     return 0
 
 
+def _mode_label(mode: str) -> str:
+    if mode == ENFORCE:
+        return RED("enforce") + DIM("  — sensitive reads and block rules stop the tool call")
+    return GREEN("observe") + DIM("  — everything is logged, nothing is blocked (secrets are still redacted)")
+
+
+def cmd_mode(args: argparse.Namespace) -> int:
+    if args.mode:
+        set_mode(args.mode)
+    mode = current_mode()
+    print(f"mode: {_mode_label(mode)}")
+    if args.mode and mode != args.mode:
+        print(YELLOW(f"  ⚠ PRIVACYHOOK_MODE={os.environ.get('PRIVACYHOOK_MODE')} overrides the saved mode"))
+    return 0
+
+
 def cmd_monitor(args: argparse.Namespace) -> int:
     from .monitor import serve
     serve(host=args.host, port=args.port, open_browser=args.open)
@@ -475,6 +502,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_test.add_argument("--tool", default="Bash")
     p_test.add_argument("--path", action="store_true", help="treat target as a path, not a command")
     p_test.set_defaults(func=cmd_policy_test)
+
+    mode = sub.add_parser("mode", help="show or set observe/enforce mode")
+    mode.add_argument("mode", nargs="?", choices=VALID_MODES,
+                      help="observe (default: log only) or enforce (block)")
+    mode.set_defaults(func=cmd_mode)
 
     monitor = sub.add_parser("monitor", help="serve a live audit-log UI on localhost")
     monitor.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1, local only)")

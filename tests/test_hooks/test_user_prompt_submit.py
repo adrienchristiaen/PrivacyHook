@@ -55,6 +55,17 @@ class TestUserPromptSubmit:
     def test_strict_mode_blocks(self, hook_env):
         payload = json.loads((FIX / "prompt_with_pii.json").read_text())
         env = {**hook_env, "PRIVACYHOOK_STRICT": "1"}
+        env["PRIVACYHOOK_MODE"] = "enforce"
         rc, _, err = _run_hook("privacyhook.hooks.user_prompt_submit", payload, env)
         assert rc == 2
         assert err
+
+    def test_strict_in_observe_mode_warns_instead_of_blocking(self, hook_env):
+        payload = json.loads((FIX / "prompt_with_pii.json").read_text())
+        env = {**hook_env, "PRIVACYHOOK_STRICT": "1", "PRIVACYHOOK_MODE": "observe"}
+        rc, out, _ = _run_hook("privacyhook.hooks.user_prompt_submit", payload, env)
+        assert rc == 0
+        assert "sensitive value" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        audit_path = Path(hook_env["PRIVACYHOOK_AUDIT_DIR"]) / "audit.jsonl"
+        last = json.loads(audit_path.read_text().splitlines()[-1])
+        assert last["event"] == "would_block"

@@ -8,7 +8,7 @@ from typing import Any
 
 from ..policy import PolicyEngine
 from ..workspace import WorkspaceGuard
-from ._common import block, normalize_tool, open_session_and_audit, read_event
+from ._common import deny, normalize_tool, open_session_and_audit, read_event
 
 
 def _extract_path(event: dict[str, Any]) -> str | None:
@@ -53,29 +53,30 @@ def main() -> int:
         if cmd:
             blocked, reason = guard.check_bash(cmd)
             if blocked:
-                audit.append(
-                    hook="pre_tool_use", event="block", tool=tool, categories=[],
-                    count=0, reason=reason, target=cmd[:120], cli=cli,
+                deny(
+                    audit, hook="pre_tool_use", event="block",
+                    message=f"bash command blocked: {reason}",
+                    tool=tool, categories=[], count=0, reason=reason, target=cmd[:120], cli=cli,
                 )
-                block(f"bash command blocked: {reason}")
         elif path:
             blocked, reason = guard.check_path(path)
             if blocked:
-                audit.append(
-                    hook="pre_tool_use", event="block", tool=tool, categories=[],
-                    count=0, reason=reason, target=path, cli=cli,
+                deny(
+                    audit, hook="pre_tool_use", event="block",
+                    message=f"path {path!r} blocked: {reason}",
+                    tool=tool, categories=[], count=0, reason=reason, target=path, cli=cli,
                 )
-                block(f"path {path!r} blocked: {reason}")
 
         target = cmd or path
         if target:
             action, rule = policy.evaluate(tool, command=cmd, path_str=path)
             if action == "block":
-                audit.append(
-                    hook="pre_tool_use", event="policy_block", tool=tool, categories=[],
-                    count=0, reason=rule.reason or rule.pattern, target=target[:120], cli=cli,
+                deny(
+                    audit, hook="pre_tool_use", event="policy_block",
+                    message=f"blocked by policy rule '{rule.id}': {rule.reason or rule.pattern}",
+                    tool=tool, categories=[], count=0, reason=rule.reason or rule.pattern,
+                    target=target[:120], cli=cli,
                 )
-                block(f"blocked by policy rule '{rule.id}': {rule.reason or rule.pattern}")
             elif action == "warn":
                 audit.append(
                     hook="pre_tool_use", event="policy_warn", tool=tool, categories=[],

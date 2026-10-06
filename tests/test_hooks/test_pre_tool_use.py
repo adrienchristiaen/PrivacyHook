@@ -39,6 +39,9 @@ def hook_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
         "PRIVACYHOOK_SESSION_ROOT": str(tmp_path / "sess"),
         "PRIVACYHOOK_AUDIT_DIR": str(tmp_path / "audit"),
         "PYTHONPATH": str(Path(__file__).parent.parent.parent),
+        # Blocking tests run in enforce mode; observe mode (the default) is
+        # covered by TestObserveMode below.
+        "PRIVACYHOOK_MODE": "enforce",
     }, workspace)
 
 
@@ -126,3 +129,57 @@ class TestPreToolUse:
         entries = [json.loads(line) for line in audit_path.read_text().splitlines() if line.strip()]
         assert entries
         assert entries[-1]["cli"] == "codex"
+
+
+def _audit_events(env: dict[str, str]) -> list[dict]:
+    audit_path = Path(env["PRIVACYHOOK_AUDIT_DIR"]) / "audit.jsonl"
+    return [json.loads(line) for line in audit_path.read_text().splitlines() if line.strip()]
+
+
+class TestObserveMode:
+    def test_default_mode_logs_but_does_not_block(self, hook_env):
+        env, ws = hook_env
+        env = {k: v for k, v in env.items() if k != "PRIVACYHOOK_MODE"}
+        payload = json.loads((FIX / "pre_read_env.json").read_text())
+        parent_env = {k: v for k, v in os.environ.items() if k != "PRIVACYHOOK_MODE"}
+        proc = subprocess.run(
+            [sys.executable, "-m", "privacyhook.hooks.pre_tool_use"],
+            input=json.dumps(payload), capture_output=True, text=True,
+            env={**parent_env, **env}, cwd=str(ws), timeout=10,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == ""  # no {"decision": "block"} for Codex either
+        assert "observe mode" in proc.stderr
+        assert _audit_events(env)[-1]["event"] == "would_block"
+
+    def test_observe_bash_and_policy_rule_are_logged_not_blocked(self, hook_env, tmp_path):
+        env, ws = hook_env
+        env = {**env, "PRIVACYHOOK_MODE": "observe",
+               "PRIVACYHOOK_POLICY_PATH": str(tmp_path / "policy.json")}
+        rc, out, _ = _run_hook(
+            "privacyhook.cli",
+            {}, env, args=["policy", "add", "--id", "no-force", "--tool", "Bash",
+                           "--match", "push.*--force", "--action", "block"],
+        )
+        assert rc == 0
+        payload = {"session_id": "t", "tool_name": "Bash",
+                   "tool_input": {"command": "git push --force origin main"}}
+        rc, out, _ = _run_hook("privacyhook.hooks.pre_tool_use", payload, env, cwd=ws)
+        assert rc == 0
+        assert _audit_events(env)[-1]["event"] == "would_policy_block"
+
+    def test_mode_file_switches_to_enforce(self, hook_env):
+        env, ws = hook_env
+        env = {k: v for k, v in env.items() if k != "PRIVACYHOOK_MODE"}
+        audit_dir = Path(env["PRIVACYHOOK_AUDIT_DIR"])
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        (audit_dir / "mode").write_text("enforce\n")
+        payload = json.loads((FIX / "pre_read_env.json").read_text())
+        parent_env = {k: v for k, v in os.environ.items() if k != "PRIVACYHOOK_MODE"}
+        proc = subprocess.run(
+            [sys.executable, "-m", "privacyhook.hooks.pre_tool_use"],
+            input=json.dumps(payload), capture_output=True, text=True,
+            env={**parent_env, **env}, cwd=str(ws), timeout=10,
+        )
+        assert proc.returncode == 2
+        assert _audit_events(env)[-1]["event"] == "block"

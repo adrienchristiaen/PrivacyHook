@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 from ..audit import AuditLog, generate_key
+from ..mode import is_enforcing
 from ..session import SessionStore
 
 
@@ -155,3 +156,16 @@ def block(reason: str, exit_code: int = 2) -> None:
     write_output({"decision": "block", "reason": reason})
     sys.stderr.write(f"privacyhook: {reason}\n")
     sys.exit(exit_code)
+
+
+def deny(audit: AuditLog, *, hook: str, event: str, message: str, **fields: Any) -> None:
+    """Record a deny decision and, in enforce mode, block the tool call.
+
+    In observe mode (the default) the decision is logged as `would_<event>`
+    and the call goes through — see privacyhook/mode.py.
+    """
+    if is_enforcing():
+        audit.append(hook=hook, event=event, **fields)
+        block(message)
+    audit.append(hook=hook, event=f"would_{event}", **fields)
+    sys.stderr.write(f"privacyhook (observe mode, not blocked): {message}\n")

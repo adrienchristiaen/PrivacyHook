@@ -24,6 +24,7 @@
 - [Why](#why)
 - [Supported CLIs](#supported-clis)
 - [What it does](#what-it-does)
+- [Observe vs enforce](#observe-vs-enforce)
 - [Tool-call policy engine](#tool-call-policy-engine)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -67,7 +68,34 @@ AI coding agents read your filesystem, run shell commands, and fetch web pages �
 | **PreToolUse / BeforeTool / tool.execute.before** | Before any file/shell tool call | Blocks calls targeting sensitive paths (`.env`, SSH keys, credentials, `*.pem`) **and** evaluates your custom [policy rules](#tool-call-policy-engine). Exit code 2 (or a thrown error for OpenCode) = CLI aborts the call. |
 | **UserPromptSubmit** | Every user prompt (Claude Code + Codex only) | Scans your prompt for structured secrets. Warns by default, blocks in strict mode. |
 
+Blocking only happens in **enforce** mode. Out of the box privacyhook runs in **observe** mode: the same checks run, but a hit is logged as `would_block` and the call goes through — see [Observe vs enforce](#observe-vs-enforce).
+
 Every event — redaction, block, warning, policy match — is recorded in an HMAC-chained audit log (`~/.local/share/privacyhook/audit.jsonl`). Tampering with any entry breaks the chain, and `privacyhook audit --verify` proves it.
+
+---
+
+## Observe vs enforce
+
+privacyhook starts in **observe** mode so that installing it never breaks an agent session:
+
+| | observe (default) | enforce |
+|---|---|---|
+| Secret redaction in tool output | on | on |
+| Sensitive path / `cat .env` checks | logged as `would_block` | blocked (exit 2) |
+| Policy rules with `--action block` | logged as `would_policy_block` | blocked |
+| `PRIVACYHOOK_STRICT=1` prompt scan | logged as `would_block`, prompt sent with a warning | prompt blocked |
+
+Watch what your agents actually do (`privacyhook audit`, `privacyhook monitor`), then switch when you know what you want to stop:
+
+```bash
+privacyhook mode            # show the current mode
+privacyhook mode enforce    # start blocking
+privacyhook mode observe    # back to log-only
+```
+
+The mode is saved next to the audit log (`~/.local/share/privacyhook/mode`). `PRIVACYHOOK_MODE=observe|enforce` overrides it for one shell or one CI job.
+
+> **Upgrading from an earlier version?** Earlier releases always blocked. Run `privacyhook mode enforce` once to keep that behavior.
 
 ---
 
@@ -220,6 +248,7 @@ Open a new CLI session — hooks activate automatically.
 | `privacyhook audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
 | `privacyhook audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
 | `privacyhook policy list \| add \| remove \| test` | Manage custom rules — see [policy engine](#tool-call-policy-engine). |
+| `privacyhook mode [observe\|enforce]` | Show or set the mode — see [observe vs enforce](#observe-vs-enforce). |
 | `privacyhook monitor [--host] [--port] [--open]` | Serve a live audit-log dashboard on localhost — see [live monitor](#live-monitor). |
 | `privacyhook uninstall [--cli ...] [--yes]` | Strips only privacyhook entries. Other hooks are untouched. |
 
@@ -264,7 +293,7 @@ Each row is one audit event: which hook fired, what it decided (`block` / `redac
 
 ## Strict mode
 
-By default the `UserPromptSubmit` hook warns but lets the prompt through. To block:
+By default the `UserPromptSubmit` hook warns but lets the prompt through. To block (takes effect in [enforce mode](#observe-vs-enforce) only; in observe mode it is logged as `would_block`):
 
 ```bash
 export PRIVACYHOOK_STRICT=1
@@ -394,7 +423,7 @@ pytest -q   # 122 passed
 
 ## Threat model
 
-**Mitigated:**
+**Mitigated** (blocking items apply in [enforce mode](#observe-vs-enforce); in observe mode they are detected and logged):
 1. LLM reads secrets via tool output → PostToolUse/AfterTool/tool.execute.after redaction
 2. LLM reads `.env` / SSH keys → PreToolUse/BeforeTool/tool.execute.before block
 3. LLM runs a command or touches a path your team has flagged → policy engine block/warn
