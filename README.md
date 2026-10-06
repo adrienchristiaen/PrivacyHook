@@ -1,19 +1,16 @@
-# privacyhook
+# Bodycam
 
-```
-    __          __    ____  __             __
-   / /_  ____  / /___/ / /_/ /_  ___  ____/ /___  ____  _____
-  / __ \/ __ \/ / __  / __/ __ \/ _ \/ __  / __ \/ __ \/ ___/
- / / / / /_/ / / /_/ / /_/ / / /  __/ /_/ / /_/ / /_/ / /
-/_/ /_/\____/_/\__,_/\__/_/ /_/\___/\__,_/\____/\____/_/
-```
+**The tape for coding agents.** Formerly PrivacyHook.
 
-> Privacy-first security layer for AI coding CLIs. Deterministic hooks the LLM cannot bypass — secrets get redacted, sensitive files get blocked, prompts get scanned, and every tool call can be governed by rules you define.
 
-[![tests](https://img.shields.io/badge/tests-122%20passed-brightgreen)](#testing)
+> Bodycam records every command, file read and secret your coding agents touch, across Claude Code, Codex, Cursor, Copilot and five more. It watches by default and blocks only when you turn enforcement on. Secrets are masked before the model sees them, and the log is HMAC-chained so the tape can be trusted later.
+>
+> Renamed from PrivacyHook: the `bodycam` command still works as an alias, every `PRIVACYHOOK_*` setting can also be written `BODYCAM_*`, and hooks you already installed keep working.
+
+[![tests](https://img.shields.io/badge/tests-224%20passed-brightgreen)](#testing)
 [![python](https://img.shields.io/badge/python-3.11+-blue)](#requirements)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![CLIs](https://img.shields.io/badge/CLIs-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20OpenCode-blueviolet)](#supported-clis)
+[![CLIs](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20Copilot%20%C2%B7%20Cursor%20%C2%B7%20Vibe%20%C2%B7%20%2B4-blueviolet)](#supported-clis)
 
 **Read in:** [Français](docs/README.fr.md) · [中文](docs/README.zh.md) · [日本語](docs/README.ja.md)
 
@@ -46,18 +43,31 @@
 
 ## Why
 
-AI coding agents read your filesystem, run shell commands, and fetch web pages — then feed the results straight back into an LLM context. That's how secrets leak: a `cat .env` in an agent's own reasoning, a stray API key in a curl response, a credential pasted by mistake into a prompt. Prompt-based instructions ("don't read secrets") are not a security boundary — the LLM can be talked out of them. privacyhook sits **outside** the model, as CLI hooks that run in plain Python before/after every tool call. The LLM cannot see, disable, or negotiate with a hook — it either lets the call through or it doesn't.
+AI coding agents read your filesystem, run shell commands, and fetch web pages — then feed the results straight back into an LLM context. That's how secrets leak: a `cat .env` in an agent's own reasoning, a stray API key in a curl response, a credential pasted by mistake into a prompt. Prompt-based instructions ("don't read secrets") are not a security boundary — the LLM can be talked out of them. bodycam sits **outside** the model, as CLI hooks that run in plain Python before/after every tool call. The LLM cannot see, disable, or negotiate with a hook — it either lets the call through or it doesn't.
 
 ---
 
 ## Supported CLIs
 
-| CLI | Hook support | Notes |
-|---|---|---|
-| **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** | Full (3 hooks) | `PostToolUse`, `PreToolUse`, `UserPromptSubmit` |
-| **[OpenAI Codex CLI](https://openai.com/codex)** | Full (3 hooks) | Same hook format as Claude Code |
-| **[Gemini CLI](https://gemini.google.com/cli)** | Partial (2 hooks) | `BeforeTool`, `AfterTool` — no prompt hook |
-| **[OpenCode](https://opencode.ai)** | Partial (2 hooks) | JS plugin bridging `tool.execute.before` / `tool.execute.after` to the same Python hooks — no prompt hook |
+What each agent lets a hook do differs, so coverage differs. This table is what bodycam actually does with each one, not what we would like it to do.
+
+| Agent | `--cli` | Tool calls recorded | Sensitive paths / commands (block or `would_block`) | Secrets in tool output | Secrets in prompts |
+|---|---|---|---|---|---|
+| **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** | `claude` | ✓ | ✓ | masked | ✓ |
+| **[OpenAI Codex CLI](https://openai.com/codex)** | `codex` | ✓ | ✓ | masked | ✓ |
+| **[Gemini CLI](https://gemini.google.com/cli)** | `gemini` | ✓ | ✓ | masked | — no prompt hook |
+| **[OpenCode](https://opencode.ai)** | `opencode` | ✓ | ✓ | masked | — no prompt hook |
+| **[GitHub Copilot CLI](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)** | `copilot` | ✓ | ✓ | masked | detected (Copilot ignores prompt-hook answers, so strict mode cannot stop it) |
+| **[Mistral Vibe](https://github.com/mistralai/mistral-vibe)** | `vibe` | ✓ | ✓ | masked | — no prompt hook |
+| **[Cursor](https://cursor.com/docs/agent/hooks)** | `cursor` | shell commands, file reads | ✓ | detected only¹ | ✓ |
+| **[Windsurf](https://docs.devin.ai/desktop/cascade/hooks)** | `windsurf` | commands, file reads and writes | ✓ | — ² | ✓ |
+| **[Cline](https://docs.cline.bot/customization/hooks)** | `cline` | ✓ | ✓ | detected only¹ | ✓ |
+| **[Aider](https://aider.chat)** | — | not supported: Aider has no hook API to plug into | | | |
+
+¹ Cursor and Cline let a hook read a tool result but not change it. The secret still reaches the model; bodycam records a `secret_detected` event (shown on the team dashboard) instead of masking it.
+² Windsurf's post-command hook does not include the command's output.
+
+"Masked" means the secret is replaced by a reversible token like `[WALL:openai_key:1]` before the model sees it. Cline runs hooks only when hooks are enabled in its settings.
 
 ---
 
@@ -67,17 +77,17 @@ AI coding agents read your filesystem, run shell commands, and fetch web pages �
 |---|---|---|
 | **PostToolUse / AfterTool / tool.execute.after** | After `Bash` / `Read` / `WebFetch` (or CLI equivalents) | Replaces detected secrets in tool output with reversible session tokens like `[WALL:openai_key:1]` before the LLM sees them. |
 | **PreToolUse / BeforeTool / tool.execute.before** | Before any file/shell tool call | Blocks calls targeting sensitive paths (`.env`, SSH keys, credentials, `*.pem`) **and** evaluates your custom [policy rules](#tool-call-policy-engine). Exit code 2 (or a thrown error for OpenCode) = CLI aborts the call. |
-| **UserPromptSubmit** | Every user prompt (Claude Code + Codex only) | Scans your prompt for structured secrets. Warns by default, blocks in strict mode. |
+| **UserPromptSubmit** | Every user prompt (agents with a prompt hook, see [Supported CLIs](#supported-clis)) | Scans your prompt for structured secrets. Warns by default, blocks in strict mode. |
 
-Blocking only happens in **enforce** mode. Out of the box privacyhook runs in **observe** mode: the same checks run, but a hit is logged as `would_block` and the call goes through — see [Observe vs enforce](#observe-vs-enforce).
+Blocking only happens in **enforce** mode. Out of the box bodycam runs in **observe** mode: the same checks run, but a hit is logged as `would_block` and the call goes through — see [Observe vs enforce](#observe-vs-enforce).
 
-Every event — redaction, block, warning, policy match — is recorded in an HMAC-chained audit log (`~/.local/share/privacyhook/audit.jsonl`). Tampering with any entry breaks the chain, and `privacyhook audit --verify` proves it.
+Every event — redaction, block, warning, policy match — is recorded in an HMAC-chained audit log (`~/.local/share/privacyhook/audit.jsonl`). Tampering with any entry breaks the chain, and `bodycam audit --verify` proves it.
 
 ---
 
 ## Observe vs enforce
 
-privacyhook starts in **observe** mode so that installing it never breaks an agent session:
+bodycam starts in **observe** mode so that installing it never breaks an agent session:
 
 | | observe (default) | enforce |
 |---|---|---|
@@ -86,17 +96,17 @@ privacyhook starts in **observe** mode so that installing it never breaks an age
 | Policy rules with `--action block` | logged as `would_policy_block` | blocked |
 | `PRIVACYHOOK_STRICT=1` prompt scan | logged as `would_block`, prompt sent with a warning | prompt blocked |
 
-Watch what your agents actually do (`privacyhook audit`, `privacyhook monitor`), then switch when you know what you want to stop:
+Watch what your agents actually do (`bodycam audit`, `bodycam monitor`), then switch when you know what you want to stop:
 
 ```bash
-privacyhook mode            # show the current mode
-privacyhook mode enforce    # start blocking
-privacyhook mode observe    # back to log-only
+bodycam mode            # show the current mode
+bodycam mode enforce    # start blocking
+bodycam mode observe    # back to log-only
 ```
 
 The mode is saved next to the audit log (`~/.local/share/privacyhook/mode`). `PRIVACYHOOK_MODE=observe|enforce` overrides it for one shell or one CI job.
 
-> **Upgrading from an earlier version?** Earlier releases always blocked. Run `privacyhook mode enforce` once to keep that behavior.
+> **Upgrading from an earlier version?** Earlier releases always blocked. Run `bodycam mode enforce` once to keep that behavior.
 
 ---
 
@@ -106,24 +116,24 @@ Sensitive-path blocking (`.env`, SSH keys, …) is built in and always on. On to
 
 ```bash
 # Block force-pushes to any branch
-privacyhook policy add --id no-force-push \
+bodycam policy add --id no-force-push \
   --tool Bash --match 'push.*--force' --action block \
   --reason "force push needs a human"
 
 # Warn (but don't block) writes under any node_modules-like path
-privacyhook policy add --id watch-writes \
+bodycam policy add --id watch-writes \
   --tool Write --match-type path_glob --match '*/node_modules/*' \
   --action warn
 
 # List active rules
-privacyhook policy list
+bodycam policy list
 
 # Dry-run a command against current rules — no side effects
-privacyhook policy test "git push --force origin main"
+bodycam policy test "git push --force origin main"
 # → block  (matched rule 'no-force-push': force push needs a human)
 
 # Remove a rule
-privacyhook policy remove no-force-push
+bodycam policy remove no-force-push
 ```
 
 Rules live in `~/.local/share/privacyhook/policy.json`, are evaluated in the order they were added, and the first match wins (no match → allow). Each rule is scoped to a tool (`Bash`, `Read`, `Write`, `*` for all, or `Tool1|Tool2`) and matches either:
@@ -131,7 +141,7 @@ Rules live in `~/.local/share/privacyhook/policy.json`, are evaluated in the ord
 - `command_regex` (default) — a regex tested against the shell command (`Bash` calls)
 - `path_glob` — a glob tested against the file path (`Read`/`Write`/`Edit` calls)
 
-Every match is written to the audit log as `policy_block` or `policy_warn`, alongside the built-in events, so `privacyhook audit` shows a complete picture.
+Every match is written to the audit log as `policy_block` or `policy_warn`, alongside the built-in events, so `bodycam audit` shows a complete picture.
 
 This is the mechanism to reach for when the built-in checks aren't enough for your team: pin dangerous commands, restrict writes to specific paths, or require review for anything touching a directory you care about — all enforced deterministically, outside the model's control.
 
@@ -140,7 +150,7 @@ This is the mechanism to reach for when the built-in checks aren't enough for yo
 ## Requirements
 
 - Python 3.11+
-- One of: Claude Code CLI, OpenAI Codex CLI, Gemini CLI, OpenCode
+- One of: Claude Code, OpenAI Codex CLI, Gemini CLI, OpenCode, GitHub Copilot CLI, Cursor, Windsurf, Mistral Vibe, Cline
 - Zero external Python dependencies — stdlib only (`sqlite3`, `hmac`, `re`, `json`)
 
 ---
@@ -153,11 +163,11 @@ This is the mechanism to reach for when the built-in checks aren't enough for yo
 # Install pipx if not already present
 brew install pipx
 
-# Install privacyhook
+# Install bodycam
 pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Register hooks (auto-detects installed CLIs)
-privacyhook install
+bodycam install
 ```
 
 ### Linux
@@ -171,7 +181,7 @@ python3 -m pipx ensurepath
 pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Register hooks
-privacyhook install
+bodycam install
 ```
 
 ### Windows (PowerShell)
@@ -185,7 +195,7 @@ pipx ensurepath
 pipx install git+https://github.com/adrienchristiaen/privacyhook.git
 
 # Register hooks
-privacyhook install
+bodycam install
 ```
 
 > **Windows note:** Settings are written to `%APPDATA%\Claude\settings.json`,
@@ -195,9 +205,9 @@ privacyhook install
 
 ```bash
 git clone https://github.com/adrienchristiaen/privacyhook.git
-cd privacyhook
+cd bodycam
 pipx install --editable .
-privacyhook install
+bodycam install
 ```
 
 ### Targeting a specific CLI
@@ -205,11 +215,16 @@ privacyhook install
 By default `install` auto-detects which CLIs are installed. To target explicitly:
 
 ```bash
-privacyhook install --cli claude     # Claude Code only
-privacyhook install --cli codex      # Codex CLI only
-privacyhook install --cli gemini     # Gemini CLI only
-privacyhook install --cli opencode   # OpenCode only (writes a JS plugin, not a JSON hook)
-privacyhook install --cli all        # all detected CLIs
+bodycam install --cli claude     # Claude Code only
+bodycam install --cli codex      # Codex CLI only
+bodycam install --cli gemini     # Gemini CLI only
+bodycam install --cli opencode   # OpenCode only (writes a JS plugin, not a JSON hook)
+bodycam install --cli copilot    # GitHub Copilot CLI (~/.copilot/hooks/privacyhook.json, honors $COPILOT_HOME)
+bodycam install --cli cursor     # Cursor (~/.cursor/hooks.json)
+bodycam install --cli windsurf   # Windsurf (~/.codeium/windsurf/hooks.json)
+bodycam install --cli vibe       # Mistral Vibe (a marked [[hooks]] block in ~/.vibe/hooks.toml, honors $VIBE_HOME)
+bodycam install --cli cline      # Cline (hook scripts in ~/Documents/Cline/Hooks)
+bodycam install --cli all        # all detected CLIs
 ```
 
 Same flag works for `uninstall` and `status`.
@@ -219,7 +234,7 @@ Same flag works for `uninstall` and `status`.
 ## Verify installation
 
 ```bash
-privacyhook status
+bodycam status
 ```
 
 Expected output:
@@ -244,25 +259,25 @@ Open a new CLI session — hooks activate automatically.
 
 | Command | What it does |
 |---|---|
-| `privacyhook status [--cli auto\|claude\|codex\|gemini\|opencode\|all]` | Installed hooks per CLI, session DB path, last 5 audit events. |
-| `privacyhook reveal <token>` | Print the original value behind a session token (session-scoped — dies with the session). |
-| `privacyhook audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
-| `privacyhook audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
-| `privacyhook policy list \| add \| remove \| test` | Manage custom rules — see [policy engine](#tool-call-policy-engine). |
-| `privacyhook join <url> --token <token> [--name NAME]` | Join your team's dashboard and install hooks in one step — see [team dashboard](#team-dashboard). |
-| `privacyhook leave` | Stop sending activity to the team dashboard. |
-| `privacyhook mode [observe\|enforce]` | Show or set the mode — see [observe vs enforce](#observe-vs-enforce). |
-| `privacyhook monitor [--host] [--port] [--open]` | Serve a live audit-log dashboard on localhost — see [live monitor](#live-monitor). |
-| `privacyhook uninstall [--cli ...] [--yes]` | Strips only privacyhook entries. Other hooks are untouched. |
+| `bodycam status [--cli auto\|all\|claude\|codex\|gemini\|opencode\|copilot\|cursor\|windsurf\|vibe\|cline]` | Installed hooks per CLI, session DB path, last 5 audit events. |
+| `bodycam reveal <token>` | Print the original value behind a session token (session-scoped — dies with the session). |
+| `bodycam audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
+| `bodycam audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
+| `bodycam policy list \| add \| remove \| test` | Manage custom rules — see [policy engine](#tool-call-policy-engine). |
+| `bodycam join <url> --token <token> [--name NAME]` | Join your team's dashboard and install hooks in one step — see [team dashboard](#team-dashboard). |
+| `bodycam leave` | Stop sending activity to the team dashboard. |
+| `bodycam mode [observe\|enforce]` | Show or set the mode — see [observe vs enforce](#observe-vs-enforce). |
+| `bodycam monitor [--host] [--port] [--open]` | Serve a live audit-log dashboard on localhost — see [live monitor](#live-monitor). |
+| `bodycam uninstall [--cli ...] [--yes]` | Strips only bodycam entries. Other hooks are untouched. |
 
 ```
-$ privacyhook reveal '[WALL:openai_key:1]'
+$ bodycam reveal '[WALL:openai_key:1]'
 sk-proj-••••••••••••••••••••••••••••••••••••
 
-$ privacyhook audit --verify
+$ bodycam audit --verify
   ✓ chain intact
 
-$ privacyhook audit --follow
+$ bodycam audit --follow
 SESSION AUDIT  —  live (Ctrl-C to stop)
 ────────────────────────────────────────────────────────────────
   16:11:02  ✗ block  pre-tool  Read  /you/project/.env  →  filename '.env' is sensitive
@@ -282,13 +297,13 @@ unset PRIVACYHOOK_DISABLED
 
 ## Live monitor
 
-`privacyhook monitor` serves a zero-dependency, local-only dashboard over the live audit log — useful to keep an eye on a long agent session in a second window without polling `audit --follow`.
+`bodycam monitor` serves a zero-dependency, local-only dashboard over the live audit log — useful to keep an eye on a long agent session in a second window without polling `audit --follow`.
 
 ```bash
-privacyhook monitor --open
+bodycam monitor --open
 ```
 
-![privacyhook monitor dashboard](docs/img/monitor-screenshot.png)
+![bodycam monitor dashboard](docs/img/monitor-screenshot.png)
 
 Each row is one audit event: which hook fired, what it decided (`block` / `redact` / `warn` / `policy_block`), and why. The `chain intact` indicator re-verifies the HMAC chain on every load — a `chain BROKEN` banner means the log was tampered with after the fact. Binds to `127.0.0.1` only; nothing leaves the machine.
 
@@ -296,7 +311,7 @@ Each row is one audit event: which hook fired, what it decided (`block` / `redac
 
 ## Team dashboard
 
-`privacyhook monitor` shows one machine. For a whole team, run the
+`bodycam monitor` shows one machine. For a whole team, run the
 [control plane](controlplane/README.md) once and have each developer join it:
 
 ```bash
@@ -305,7 +320,7 @@ docker run -d -p 8957:8957 -v privacyhook-data:/data \
   -e PRIVACYHOOK_CONTROLPLANE_TOKEN=<team-token> privacyhook-controlplane
 
 # each developer, once — checks the token, installs hooks, starts syncing
-privacyhook join https://privacyhook.acme.internal --token <team-token>
+bodycam join https://cam.acme.internal --token <team-token>
 ```
 
 On Kubernetes, use the [Helm chart or Terraform module](controlplane/README.md#deploy-on-kubernetes).
@@ -351,16 +366,16 @@ blocked as expected (exit 2)
 
 === 3. UserPromptSubmit warn ===
 {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
-  "additionalContext": "⚠ privacyhook: 1 sensitive value(s) detected in your prompt
+  "additionalContext": "⚠ bodycam: 1 sensitive value(s) detected in your prompt
   (categories: email). The prompt was sent unchanged, but tokens have been recorded
-  for `privacyhook reveal`."}}
+  for `bodycam reveal`."}}
 
 === 6. CLI: status ===
 [Claude Code]  ✓ installed
   hooks: PostToolUse · PreToolUse · UserPromptSubmit
 
 SESSION  1 value redacted this session
-    [WALL:email:1]  (email)  →  privacyhook reveal '[WALL:email:1]'
+    [WALL:email:1]  (email)  →  bodycam reveal '[WALL:email:1]'
 
 RECENT EVENTS
   12:48:27 [demo] claude  ✗ block    pre-tool   Read  .env  →  filename '.env' is sensitive
@@ -385,16 +400,19 @@ privacyhook/
 ├── audit.py       # HMAC-chained JSONL log + verify() + export_csv()
 ├── workspace.py   # workspace scan + check_path / check_bash (built-in rules)
 ├── policy.py      # user-defined allow/warn/block rules (policy engine)
-├── settings.py    # multi-CLI install / uninstall (Claude/Codex/Gemini/OpenCode adapters)
+├── settings.py    # multi-CLI install / uninstall (one adapter per agent)
 ├── cli.py         # argparse entry point
 └── hooks/
     ├── _common.py             # stdin/stdout JSON, session, tool name normalization
+    ├── adapters.py            # each agent's payload ↔ the Claude Code shape, and its deny/redact answers
     ├── post_tool_use.py       # AfterTool / PostToolUse / tool.execute.after
     ├── pre_tool_use.py        # BeforeTool / PreToolUse / tool.execute.before
     └── user_prompt_submit.py  # UserPromptSubmit (Claude Code + Codex)
 ```
 
 For every JSON-hooks-array CLI (Claude/Codex/Gemini), `install` writes a hook entry that spawns `python -m privacyhook.hooks.<name> --cli <cli>` per event. OpenCode is the one exception: it loads a JS plugin directly into its own process, so `install --cli opencode` instead generates a thin JS shim (`~/.config/opencode/plugin/privacyhook.js`) that shells out to the same Python hook modules — no logic duplicated in JS.
+
+Cursor, Copilot CLI, Windsurf, Vibe and Cline each send their own JSON shape and expect their own answer (`permission: deny`, `permissionDecision`, `decision: deny`, `cancel: true`, or exit code 2). `hooks/adapters.py` translates both directions, so the detection and policy logic is written once. Cursor, Copilot and Windsurf get entries in their JSON hooks file, Vibe gets a marked `[[hooks]]` block in `hooks.toml`, and Cline gets one small script per event; `uninstall` removes only what bodycam wrote.
 
 ### CLI adapter mapping
 
@@ -436,7 +454,7 @@ Extend by adding entries to `privacyhook/patterns.py`. Extend blocking behavior 
 For SOC2-style external audits, export the HMAC-verified audit log as CSV:
 
 ```bash
-privacyhook audit export --since 2026-01-01 --until 2026-03-31 --out q1-audit.csv
+bodycam audit export --since 2026-01-01 --until 2026-03-31 --out q1-audit.csv
 ```
 
 The first line is a `#`-prefixed metadata comment (`chain_verified=true/false`, event count, generation timestamp), so an auditor can see at a glance whether the log was tampered with before trusting the rows beneath it.
@@ -458,14 +476,16 @@ pytest -q   # 122 passed
 1. LLM reads secrets via tool output → PostToolUse/AfterTool/tool.execute.after redaction
 2. LLM reads `.env` / SSH keys → PreToolUse/BeforeTool/tool.execute.before block
 3. LLM runs a command or touches a path your team has flagged → policy engine block/warn
-4. Secrets in prompts → UserPromptSubmit scan (Claude Code + Codex)
+4. Secrets in prompts → prompt scan (Claude Code, Codex, Cursor, Windsurf, Cline; detection only on Copilot CLI)
 5. Post-hoc log tampering → HMAC-chained audit
 
 **Not mitigated:**
 - Copy-paste propagation (LLM copies secret to another file)
 - Full filesystem isolation (use a container)
 - Novel secret formats not in `patterns.py`
-- Gemini CLI / OpenCode prompts (no `UserPromptSubmit` equivalent)
+- Gemini CLI / OpenCode / Mistral Vibe prompts (no prompt hook)
+- Secrets in tool output on Cursor and Cline (detected and recorded, not masked) and on Windsurf (output not visible to hooks)
+- Aider (no hook API)
 - A user with local write access editing `policy.json` or the hooks themselves — this protects against the *LLM* bypassing controls, not against a malicious local operator
 
 ---
@@ -474,6 +494,7 @@ pytest -q   # 122 passed
 
 - [x] Compliance/audit export (SOC2-style CSV report from the HMAC log)
 - [x] OpenCode adapter
+- [x] GitHub Copilot CLI, Cursor, Windsurf, Mistral Vibe and Cline adapters
 - [ ] Ollama contextual rewriting (200 ms timeout, regex fallback)
 - [ ] `Stop` hook with per-session redaction summary
 - [ ] Homebrew formula + PyPI release

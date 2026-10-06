@@ -30,7 +30,7 @@ _PAGE = """<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>privacyhook monitor</title>
+<title>bodycam monitor</title>
 <style>
   :root { color-scheme: light dark; }
   body { font: 13px/1.4 ui-monospace, monospace; margin: 0; padding: 1.5rem;
@@ -54,6 +54,7 @@ _PAGE = """<!doctype html>
   .block, .policy_block { color: #f85149; }
   .warn, .policy_warn { color: #d29922; }
   .redact { color: #58a6ff; }
+  .secret_detected { color: #f0883e; }
   .would_block, .would_policy_block { color: #d29922; font-style: italic; }
   .allow { color: #3fb950; }
   .policy_tamper_detected { color: #f0883e; font-weight: bold; }
@@ -63,7 +64,7 @@ _PAGE = """<!doctype html>
 </style>
 </head>
 <body>
-  <h1>privacyhook monitor</h1>
+  <h1>bodycam monitor</h1>
   <div class="sub">live audit log — local only</div>
   <div class="bar">
     <input id="q" placeholder="filter (tool, reason, session...)" size="28">
@@ -76,6 +77,7 @@ _PAGE = """<!doctype html>
       <option value="warn">warn</option>
       <option value="policy_warn">policy_warn</option>
       <option value="redact">redact</option>
+      <option value="secret_detected">secret_detected</option>
       <option value="allow">allow</option>
       <option value="policy_tamper_detected">policy_tamper_detected</option>
     </select>
@@ -217,11 +219,11 @@ def serve(host: str = "127.0.0.1", port: int = 8956, *, open_browser: bool = Fal
                 raise
     if server is None:
         raise SystemExit(
-            f"privacyhook: ports {tried[0]}-{tried[-1]} all in use. "
+            f"bodycam: ports {tried[0]}-{tried[-1]} all in use. "
             f"Pass --port to pick one explicitly."
         )
     url = f"http://{host}:{port}/"
-    print(f"privacyhook monitor  —  {url}  (Ctrl-C to stop)")
+    print(f"bodycam monitor  —  {url}  (Ctrl-C to stop)")
     if open_browser:
         import webbrowser
         threading.Timer(0.3, lambda: webbrowser.open(url)).start()
