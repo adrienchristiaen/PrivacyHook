@@ -2,7 +2,8 @@
 Free to self-host; may not be resold as a hosted/managed service.
 
 privacyhook control plane: serves a centrally-managed policy.yaml to
-every developer's hook, and exposes decision counters for Grafana/Datadog.
+every developer's hook, collects their event metadata, and serves the team
+dashboard. Decision counters are also exposed for Grafana/Datadog.
 
 Run:
     PRIVACYHOOK_CONTROLPLANE_POLICY_PATH=./example-policy.yaml \\
@@ -12,9 +13,14 @@ Run:
 Endpoints:
     GET  /v1/policy   — {"version": "<hash>", "rules": [...]}. Requires
                         Authorization: Bearer <token>.
-    POST /v1/events   — {"action", "tool", "team", "rule_id"}. No command or
-                        path content is ever accepted here — only decision
-                        metadata, keeping the control plane privacy-first.
+    POST /v1/events   — {"events": [{event, tool, user, session, cli, …}]}
+                        (batched, sent by `privacyhook join`ed hooks) or the
+                        original single {"action", "tool", "team", "rule_id"}.
+                        No command or path content is ever accepted here —
+                        only metadata, keeping the control plane privacy-first.
+    GET  /v1/events   — recent events for the caller's tenant (Bearer token).
+    GET  /v1/summary  — per-developer / per-tool aggregates (Bearer token).
+    GET  /            — the team dashboard (asks for the team token).
     GET  /metrics     — Prometheus text exposition of decision counters.
     GET  /healthz     — plain 200, for k8s liveness/readiness probes.
 
@@ -32,8 +38,9 @@ import time
 from collections import Counter, defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+from .events_store import EventStore
 from .policy_yaml import PolicyYamlError, load_policy_yaml, rules_to_json
 from .tenants import Tenant, load_tenants
 
@@ -43,13 +50,31 @@ _decision_counts: Counter[tuple[str, str, str, str]] = Counter()  # (tenant_id, 
 _policy_cache: dict[str, dict] = {}  # tenant_id -> {mtime, version, rules_json}
 _policy_cache_lock = threading.Lock()
 
+_DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_bytes()
+_MAX_BODY_BYTES = 1_000_000
+_MAX_EVENTS_PER_POST = 1000
+
+_event_store: EventStore | None = None
+_event_store_lock = threading.Lock()
+
+
+def _store() -> EventStore:
+    global _event_store
+    with _event_store_lock:
+        if _event_store is None:
+            _event_store = EventStore()
+        return _event_store
+
+
 _EVENTS_RATE_WINDOW_SECONDS = 60.0
 _rate_limit_lock = threading.Lock()
 _rate_limit_hits: dict[str, deque] = defaultdict(deque)
 
 
 def _events_rate_limit() -> int:
-    return int(os.environ.get("PRIVACYHOOK_CONTROLPLANE_EVENTS_RATE_LIMIT", "60"))
+    # Hooks batch their events (one POST every couple of seconds per busy
+    # developer), and a whole office can sit behind one NAT IP.
+    return int(os.environ.get("PRIVACYHOOK_CONTROLPLANE_EVENTS_RATE_LIMIT", "600"))
 
 
 def _rate_limited(client_ip: str) -> bool:
@@ -86,7 +111,10 @@ def _tenant_for_request(headers) -> Tenant | None:
 def _load_policy(tenant: Tenant) -> tuple[str, list[dict]]:
     """Re-parse the tenant's YAML file only when its mtime changes — cheap
     enough to check on every request, avoids a filesystem-watch dependency,
-    and fits a ConfigMap-mounted file that changes rarely."""
+    and fits a ConfigMap-mounted file that changes rarely. A missing file
+    means "no central rules yet" so the server runs with zero config."""
+    if not tenant.policy_path.exists():
+        return "empty", []
     mtime = tenant.policy_path.stat().st_mtime
     with _policy_cache_lock:
         cached = _policy_cache.get(tenant.id)
@@ -117,6 +145,35 @@ class _Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/healthz":
             self._send_json({"ok": True})
+            return
+
+        if parsed.path in ("/", "/dashboard"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(_DASHBOARD_HTML)))
+            self.end_headers()
+            self.wfile.write(_DASHBOARD_HTML)
+            return
+
+        if parsed.path in ("/v1/events", "/v1/summary"):
+            tenant = _tenant_for_request(self.headers)
+            if tenant is None:
+                self._send_json({"error": "unauthorized"}, status=401)
+                return
+            params = parse_qs(parsed.query)
+            if parsed.path == "/v1/events":
+                try:
+                    limit = int(params.get("limit", ["200"])[0])
+                except ValueError:
+                    limit = 200
+                user = params.get("user", [None])[0]
+                self._send_json({"events": _store().recent(tenant.id, limit=limit, user=user)})
+            else:
+                try:
+                    hours = float(params.get("hours", ["24"])[0])
+                except ValueError:
+                    hours = 24.0
+                self._send_json(_store().summary(tenant.id, hours=max(0.1, min(hours, 24 * 90))))
             return
 
         if parsed.path == "/v1/policy":
@@ -172,20 +229,34 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "rate limited"}, status=429)
             return
 
-        length = int(self.headers.get("Content-Length", "0") or "0")
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            length = 0
+        if length > _MAX_BODY_BYTES:
+            self._send_json({"error": "payload too large"}, status=413)
+            return
         raw = self.rfile.read(length) if length else b""
         try:
             payload = json.loads(raw.decode("utf-8")) if raw else {}
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             self._send_json({"error": "invalid JSON"}, status=400)
             return
+        if not isinstance(payload, dict):
+            self._send_json({"error": "expected a JSON object"}, status=400)
+            return
 
-        action = str(payload.get("action", "unknown"))
-        tool = str(payload.get("tool", "unknown"))
-        team = str(payload.get("team", "default"))
+        batch = payload.get("events") if "events" in payload else [payload]
+        if not isinstance(batch, list):
+            self._send_json({"error": "events must be a list"}, status=400)
+            return
+        events = [EventStore.normalize(e) for e in batch[:_MAX_EVENTS_PER_POST] if isinstance(e, dict)]
         with _counters_lock:
-            _decision_counts[(tenant.id, action, tool, team)] += 1
-        self._send_json({"ok": True})
+            for e in events:
+                _decision_counts[(tenant.id, e["event"], e["tool"], e["team"])] += 1
+        if events:
+            _store().add(tenant.id, events)
+        self._send_json({"ok": True, "accepted": len(events)})
 
 
 def serve(host: str = "0.0.0.0", port: int = 8957) -> None:

@@ -22,6 +22,7 @@ from pathlib import Path
 from . import settings as S
 from .audit import AuditLog, generate_key
 from .mode import ENFORCE, VALID_MODES, current_mode, set_mode
+from . import team as T
 from .policy import Rule, PolicyEngine, VALID_ACTIONS, VALID_MATCH_TYPES
 from .remote_policy import RemotePolicySource
 from .session import SessionStore, session_db_path, session_root
@@ -176,19 +177,25 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     # ── control plane ────────────────────────────────────────────────────────
     remote = RemotePolicySource()
-    print(BOLD("CONTROL PLANE"))
+    print(BOLD("TEAM"))
     if not remote.configured:
-        print(DIM("  not configured (PRIVACYHOOK_CONTROLPLANE_URL unset — using local policy.json only)"))
+        print(DIM("  not in a team (run `privacyhook join <url> --token <token>`) — using local policy.json only"))
     else:
         rules = remote.refresh(ttl_seconds=0)
         cached = remote._load_cache()
         age = int(time.time() - cached.get("fetched_at", 0)) if cached else None
-        if rules and age is not None and age <= 2:
+        # A team may have no central rules yet, so judge the connection by the
+        # cache timestamp rather than by whether any rules came back.
+        if age is not None and age <= 2:
             print(GREEN(f"  ✓ connected") + DIM(f"  {remote.url}  —  {len(rules)} rule(s), synced just now"))
-        elif rules:
+        elif cached:
             print(YELLOW(f"  ⚠ cached") + DIM(f"  {remote.url}  —  {len(rules)} rule(s), server unreachable, using last known policy ({age}s old)"))
         else:
             print(RED(f"  ✗ unreachable") + DIM(f"  {remote.url}  —  no cached policy available"))
+        cfg = T.load_config() or {}
+        pending = T.pending_count()
+        print(DIM(f"  you appear as '{cfg.get('user')}' on the team dashboard: {remote.url}/")
+              + (YELLOW(f"  ({pending} event(s) waiting to sync)") if pending else ""))
     print()
 
     # ── session ──────────────────────────────────────────────────────────────
@@ -427,6 +434,33 @@ def cmd_mode(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_join(args: argparse.Namespace) -> int:
+    url = args.url.rstrip("/")
+    ok, detail = T.check_connection(url, args.token)
+    if not ok:
+        return _exit(f"cannot join {url}: {detail}")
+    user = args.name or T.default_user()
+    T.save_config(url, args.token, user)
+    print(GREEN("✓ joined ") + BOLD(url) + DIM(f"  as '{user}'"))
+    if not args.no_install:
+        install_args = argparse.Namespace(cli=args.cli, dry_run=False, yes=True)
+        rc = cmd_install(install_args)
+        if rc:
+            return rc
+    print(DIM(f"  team policy is pulled automatically; activity metadata (never commands, paths or secrets)"))
+    print(DIM(f"  shows up on the team dashboard: {url}/"))
+    print(DIM(f"  mode: {current_mode()}  —  change with `privacyhook mode enforce`"))
+    return 0
+
+
+def cmd_leave(args: argparse.Namespace) -> int:
+    if T.clear_config():
+        print("left the team — events stay local from now on (hooks are still installed)")
+    else:
+        print("not in a team")
+    return 0
+
+
 def cmd_monitor(args: argparse.Namespace) -> int:
     from .monitor import serve
     serve(host=args.host, port=args.port, open_browser=args.open)
@@ -502,6 +536,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_test.add_argument("--tool", default="Bash")
     p_test.add_argument("--path", action="store_true", help="treat target as a path, not a command")
     p_test.set_defaults(func=cmd_policy_test)
+
+    join = sub.add_parser("join", help="join your team's control plane and install hooks, in one step")
+    join.add_argument("url", help="control plane URL, e.g. https://privacyhook.acme.internal")
+    join.add_argument("--token", required=True, help="team token from your admin")
+    join.add_argument("--name", help="how you appear on the team dashboard (default: your OS username)")
+    join.add_argument("--cli", default="all", choices=cli_choices,
+                      help="which CLIs to install hooks for (default: every detected CLI)")
+    join.add_argument("--no-install", action="store_true", help="only save the team config")
+    join.set_defaults(func=cmd_join)
+
+    leave = sub.add_parser("leave", help="stop syncing with the team control plane")
+    leave.set_defaults(func=cmd_leave)
 
     mode = sub.add_parser("mode", help="show or set observe/enforce mode")
     mode.add_argument("mode", nargs="?", choices=VALID_MODES,

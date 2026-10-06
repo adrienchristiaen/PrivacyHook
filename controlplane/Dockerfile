@@ -7,8 +7,13 @@ COPY privacyhook ./privacyhook
 COPY controlplane ./controlplane
 RUN pip install --no-cache-dir pyyaml
 
+RUN mkdir /data && chown privacyhook /data
 USER privacyhook
+# The policy file is optional: without it the server starts with no central
+# rules and only collects activity for the dashboard.
 ENV PRIVACYHOOK_CONTROLPLANE_POLICY_PATH=/etc/privacyhook/policy.yaml
+ENV PRIVACYHOOK_CONTROLPLANE_DB=/data/events.db
+VOLUME /data
 EXPOSE 8957
 
 ENTRYPOINT ["python", "-m", "controlplane.server"]

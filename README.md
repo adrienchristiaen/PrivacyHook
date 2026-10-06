@@ -31,6 +31,7 @@
 - [Verify installation](#verify-installation)
 - [Usage](#usage)
 - [Live monitor](#live-monitor)
+- [Team dashboard](#team-dashboard)
 - [Strict mode](#strict-mode)
 - [End-to-end demo](#end-to-end-demo)
 - [Architecture](#architecture)
@@ -248,6 +249,8 @@ Open a new CLI session — hooks activate automatically.
 | `privacyhook audit [--verify] [--last N] [--json] [--follow]` | Print the audit log. `--verify` walks the HMAC chain. `--follow` (`-f`) tails new events live, for monitoring in a second terminal. |
 | `privacyhook audit export [--since DATE] [--until DATE] [--out FILE]` | Export the audit log as CSV — see [compliance export](#compliance-export). |
 | `privacyhook policy list \| add \| remove \| test` | Manage custom rules — see [policy engine](#tool-call-policy-engine). |
+| `privacyhook join <url> --token <token> [--name NAME]` | Join your team's dashboard and install hooks in one step — see [team dashboard](#team-dashboard). |
+| `privacyhook leave` | Stop sending activity to the team dashboard. |
 | `privacyhook mode [observe\|enforce]` | Show or set the mode — see [observe vs enforce](#observe-vs-enforce). |
 | `privacyhook monitor [--host] [--port] [--open]` | Serve a live audit-log dashboard on localhost — see [live monitor](#live-monitor). |
 | `privacyhook uninstall [--cli ...] [--yes]` | Strips only privacyhook entries. Other hooks are untouched. |
@@ -288,6 +291,29 @@ privacyhook monitor --open
 ![privacyhook monitor dashboard](docs/img/monitor-screenshot.png)
 
 Each row is one audit event: which hook fired, what it decided (`block` / `redact` / `warn` / `policy_block`), and why. The `chain intact` indicator re-verifies the HMAC chain on every load — a `chain BROKEN` banner means the log was tampered with after the fact. Binds to `127.0.0.1` only; nothing leaves the machine.
+
+---
+
+## Team dashboard
+
+`privacyhook monitor` shows one machine. For a whole team, run the
+[control plane](controlplane/README.md) once and have each developer join it:
+
+```bash
+# admin, once
+docker run -d -p 8957:8957 -v privacyhook-data:/data \
+  -e PRIVACYHOOK_CONTROLPLANE_TOKEN=<team-token> privacyhook-controlplane
+
+# each developer, once — checks the token, installs hooks, starts syncing
+privacyhook join https://privacyhook.acme.internal --token <team-token>
+```
+
+The dashboard at the server's URL shows active developers, agent sessions,
+tool calls, secrets masked and what would have been blocked, per developer and
+per tool. Only metadata is sent (event type, tool name, agent, developer,
+secret categories); commands, paths, prompts and secret values stay on the
+developer's machine. Events are sent in the background, so the agent never
+waits on the network.
 
 ---
 

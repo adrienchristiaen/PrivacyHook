@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>privacyhook — team</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e5e5e2;
+    --accent: #2f6fde; --ok: #1f8a4c; --warn: #b26a00; --bad: #c4312b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --panel: #171a21; --text: #e8e8ea; --muted: #9a9ca3; --line: #262a33;
+            --accent: #6a9cff; --ok: #3fb96f; --warn: #e0a339; --bad: #ff6b63; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line);
+           background: var(--panel); position: sticky; top: 0; z-index: 1; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); }
+  header .spacer { flex: 1; }
+  select, button, input { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+                          border-radius: 8px; padding: 6px 10px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi .label { color: var(--muted); font-size: 12px; }
+  .kpi .value { font-size: 26px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi.warn .value { color: var(--warn); } .kpi.bad .value { color: var(--bad); } .kpi.ok .value { color: var(--ok); }
+  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } header { flex-wrap: wrap; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  section h2 { font-size: 13px; font-weight: 600; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line);
+               display: flex; justify-content: space-between; align-items: center; }
+  section h2 .hint { color: var(--muted); font-weight: 400; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.click { cursor: pointer; } tr.click:hover td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  tr.selected td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .bars { padding: 8px 16px 14px; display: grid; gap: 8px; }
+  .bar { display: grid; grid-template-columns: 90px 1fr 48px; gap: 8px; align-items: center; }
+  .bar .track { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--accent); }
+  .bar .n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .ev-block, .ev-policy_block { color: var(--bad); border-color: currentColor; }
+  .ev-would_block, .ev-would_policy_block, .ev-warn, .ev-policy_warn { color: var(--warn); border-color: currentColor; }
+  .ev-redact { color: var(--accent); border-color: currentColor; }
+  .ev-tool_call { color: var(--muted); }
+  .muted { color: var(--muted); }
+  .empty { padding: 24px 16px; color: var(--muted); }
+  .empty code { background: var(--bg); padding: 2px 6px; border-radius: 6px; }
+  #login { max-width: 420px; width: calc(100% - 32px); margin: 12vh auto; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 14px; padding: 28px; display: grid; gap: 12px; }
+  #login h1 { margin: 0; font-size: 20px; }
+  #login p { margin: 0; color: var(--muted); }
+  #login .err { color: var(--bad); min-height: 1.2em; }
+  .privacy { color: var(--muted); font-size: 12px; text-align: center; padding-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<form id="login" hidden>
+  <h1>privacyhook team dashboard</h1>
+  <p>Enter your team token to see what your AI coding agents are doing.</p>
+  <input id="token" type="password" placeholder="team token" autocomplete="current-password" required>
+  <button class="primary" type="submit">Open dashboard</button>
+  <div class="err" id="loginErr"></div>
+</form>
+
+<div id="app" hidden>
+  <header>
+    <h1>privacyhook</h1><span class="sub">team activity</span>
+    <span class="spacer"></span>
+    <select id="range" aria-label="time range">
+      <option value="24">Last 24 hours</option>
+      <option value="168">Last 7 days</option>
+      <option value="720">Last 30 days</option>
+    </select>
+    <button id="logout" type="button">Sign out</button>
+  </header>
+  <main>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <section>
+        <h2>Developers <span class="hint">click a row to filter activity</span></h2>
+        <div class="scroll"><table>
+          <thead><tr><th>Developer</th><th>Agents</th><th class="num">Sessions</th><th class="num">Tool calls</th>
+            <th class="num">Secrets masked</th><th class="num">Would block</th><th class="num">Blocked</th><th>Last seen</th></tr></thead>
+          <tbody id="people"></tbody>
+        </table></div>
+      </section>
+      <div style="display:grid; gap:20px; align-content:start">
+        <section><h2>Tools used</h2><div class="bars" id="tools"></div></section>
+        <section><h2>Policy rules hit</h2><div class="bars" id="rules"></div></section>
+      </div>
+    </div>
+    <section>
+      <h2><span>Recent activity <span class="hint" id="filterHint"></span></span>
+          <label class="hint"><input type="checkbox" id="hideCalls" checked> hide plain tool calls</label></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Time</th><th>Developer</th><th>Agent</th><th>Event</th><th>Tool</th><th>Detail</th><th>Mode</th></tr></thead>
+        <tbody id="feed"></tbody>
+      </table></div>
+    </section>
+    <div class="privacy">Only metadata reaches this server: event type, tool name, agent, developer and secret categories.
+      Commands, file paths, prompts and secret values never leave developers' machines.</div>
+  </main>
+</div>
+
+<script>
+const KEY = "privacyhook.token";
+let token = null, selectedUser = null;
+try { token = localStorage.getItem(KEY); } catch (e) {}
+
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k === "onclick") n.onclick = v; else n.setAttribute(k, v);
+  }
+  for (const k of kids) n.append(k instanceof Node ? k : document.createTextNode(k ?? ""));
+  return n;
+}
+function ago(ts) {
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + " min ago";
+  if (s < 86400) return Math.floor(s / 3600) + " h ago";
+  return Math.floor(s / 86400) + " d ago";
+}
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString() : d.toLocaleString();
+}
+const EVENT_LABEL = {
+  tool_call: "tool call", redact: "secret masked", warn: "secret in prompt", block: "blocked",
+  policy_block: "blocked by rule", would_block: "would block", would_policy_block: "would block (rule)",
+  policy_warn: "rule warning", policy_tamper_detected: "policy tampered",
+};
+
+async function api(path) {
+  const r = await fetch(path, { headers: { Authorization: "Bearer " + token } });
+  if (r.status === 401) { const e = new Error("unauthorized"); e.status = 401; throw e; }
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function showLogin(msg) {
+  $("app").hidden = true; $("login").hidden = false; $("loginErr").textContent = msg || ""; $("token").focus();
+}
+
+function renderKpis(t) {
+  const k = $("kpis"); k.replaceChildren();
+  const items = [
+    ["Active developers", t.developers, ""], ["Agent sessions", t.sessions, ""], ["Tool calls", t.tool_calls, ""],
+    ["Secrets masked", t.secrets_redacted, "ok"], ["Would have been blocked", t.would_block, t.would_block ? "warn" : ""],
+    ["Blocked", t.blocked, t.blocked ? "bad" : ""],
+  ];
+  for (const [label, v, cls] of items)
+    k.append(el("div", { class: "kpi " + cls }, el("div", { class: "label" }, label),
+                el("div", { class: "value" }, (v || 0).toLocaleString())));
+}
+
+function renderBars(target, rows, labelKey, valueKey, emptyText) {
+  const box = $(target); box.replaceChildren();
+  if (!rows.length) { box.append(el("div", { class: "muted" }, emptyText)); return; }
+  const max = Math.max(...rows.map((r) => r[valueKey]));
+  for (const r of rows) {
+    const fill = el("div", { class: "fill" }); fill.style.width = (100 * r[valueKey] / max) + "%";
+    const label = r[labelKey] + (r.event ? " · " + (EVENT_LABEL[r.event] || r.event) : "");
+    box.append(el("div", { class: "bar", title: label }, el("span", {}, label),
+      el("div", { class: "track" }, fill), el("span", { class: "n" }, String(r[valueKey]))));
+  }
+}
+
+function renderPeople(rows) {
+  const tb = $("people"); tb.replaceChildren();
+  if (!rows.length) {
+    const td = el("td", { colspan: "8", class: "empty" }, "No activity yet. Each developer runs ",
+      el("code", {}, `privacyhook join ${location.origin} --token <team token>`), " once.");
+    tb.append(el("tr", {}, td)); return;
+  }
+  for (const p of rows) {
+    const tr = el("tr", { class: "click" + (p.user === selectedUser ? " selected" : ""),
+      onclick: () => { selectedUser = selectedUser === p.user ? null : p.user; refresh(); } },
+      el("td", {}, p.user), el("td", { class: "muted" }, (p.clis || "").split(",").join(", ")),
+      el("td", { class: "num" }, String(p.sessions)), el("td", { class: "num" }, String(p.tool_calls || 0)),
+      el("td", { class: "num" }, String(p.secrets_redacted || 0)), el("td", { class: "num" }, String(p.would_block || 0)),
+      el("td", { class: "num" }, String(p.blocked || 0)), el("td", { class: "muted" }, ago(p.last_seen)));
+    tb.append(tr);
+  }
+}
+
+function renderFeed(events) {
+  const hide = $("hideCalls").checked;
+  const tb = $("feed"); tb.replaceChildren();
+  const rows = events.filter((e) => !(hide && e.event === "tool_call"));
+  $("filterHint").textContent = selectedUser ? "— " + selectedUser : "";
+  if (!rows.length) { tb.append(el("tr", {}, el("td", { colspan: "7", class: "empty" }, "Nothing to show."))); return; }
+  for (const e of rows) {
+    const detail = e.rule || (e.categories.length ? e.count + "× " + e.categories.join(", ") : "");
+    tb.append(el("tr", {}, el("td", { class: "muted" }, fmtTime(e.ts)), el("td", {}, e.user),
+      el("td", { class: "muted" }, e.cli), el("td", {}, el("span", { class: "pill ev-" + e.event }, EVENT_LABEL[e.event] || e.event)),
+      el("td", {}, e.tool), el("td", { class: "muted" }, detail), el("td", { class: "muted" }, e.mode)));
+  }
+}
+
+async function refresh() {
+  try {
+    const hours = $("range").value;
+    const q = selectedUser ? "&user=" + encodeURIComponent(selectedUser) : "";
+    const [summary, recent] = await Promise.all([api("/v1/summary?hours=" + hours), api("/v1/events?limit=300" + q)]);
+    $("login").hidden = true; $("app").hidden = false;
+    renderKpis(summary.totals);
+    renderPeople(summary.developers);
+    renderBars("tools", summary.tools, "tool", "calls", "No tool calls yet.");
+    renderBars("rules", summary.rules, "rule", "hits", "No policy rule matched.");
+    renderFeed(recent.events);
+  } catch (e) {
+    if (e.status === 401) { try { localStorage.removeItem(KEY); } catch (_) {} token = null; showLogin("That token was not accepted."); }
+  }
+}
+
+$("login").addEventListener("submit", (ev) => {
+  ev.preventDefault(); token = $("token").value.trim();
+  try { localStorage.setItem(KEY, token); } catch (e) {}
+  refresh();
+});
+$("logout").onclick = () => { try { localStorage.removeItem(KEY); } catch (e) {} token = null; showLogin(); };
+$("range").onchange = refresh;
+$("hideCalls").onchange = refresh;
+
+if (token) refresh(); else showLogin();
+setInterval(() => { if (token && !document.hidden) refresh(); }, 10000);
+</script>
+</body>
+</html>

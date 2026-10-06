@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from controlplane import server as cp_server
+from controlplane.events_store import EventStore
 
 
 @pytest.fixture
@@ -25,6 +26,7 @@ def running_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     cp_server._policy_cache.update(mtime=None, version="", rules_json=[])
     cp_server._decision_counts.clear()
+    cp_server._event_store = EventStore(":memory:")
     cp_server._rate_limit_hits.clear()
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), cp_server._Handler)
@@ -164,6 +166,7 @@ def multi_tenant_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     cp_server._policy_cache.clear()
     cp_server._decision_counts.clear()
+    cp_server._event_store = EventStore(":memory:")
     cp_server._rate_limit_hits.clear()
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), cp_server._Handler)
@@ -219,3 +222,84 @@ def test_events_rate_limited_after_threshold(running_server, monkeypatch: pytest
     )
     assert status == 429
     assert json.loads(body)["error"] == "rate limited"
+
+
+# ── team dashboard: batched events, summary, isolation ──────────────────────
+
+def _batch(user: str, *events: tuple[str, str]) -> dict:
+    return {"events": [
+        {"event": ev, "tool": tool, "user": user, "session": f"s-{user}", "cli": "claude",
+         "hook": "pre_tool_use", "categories": ["openai_key"] if ev == "redact" else [],
+         "count": 1 if ev == "redact" else 0, "mode": "observe"}
+        for ev, tool in events
+    ]}
+
+
+def test_batched_events_feed_summary(running_server):
+    base, _ = running_server
+    status, body = _post(
+        f"{base}/v1/events",
+        _batch("alice", ("tool_call", "Bash"), ("tool_call", "Read"), ("would_block", "Read"), ("redact", "Bash")),
+        token="test-token",
+    )
+    assert status == 200 and json.loads(body)["accepted"] == 4
+    _post(f"{base}/v1/events", _batch("bob", ("tool_call", "Bash")), token="test-token")
+
+    status, body = _get(f"{base}/v1/summary", token="test-token")
+    assert status == 200
+    summary = json.loads(body)
+    assert summary["totals"]["developers"] == 2
+    assert summary["totals"]["tool_calls"] == 3
+    assert summary["totals"]["would_block"] == 1
+    assert summary["totals"]["secrets_redacted"] == 1
+    alice = next(d for d in summary["developers"] if d["user"] == "alice")
+    assert alice["tool_calls"] == 2 and alice["would_block"] == 1
+    assert summary["tools"][0] == {"tool": "Bash", "calls": 2}
+
+
+def test_recent_events_filter_by_user(running_server):
+    base, _ = running_server
+    _post(f"{base}/v1/events", _batch("alice", ("tool_call", "Bash")), token="test-token")
+    _post(f"{base}/v1/events", _batch("bob", ("would_block", "Read")), token="test-token")
+    status, body = _get(f"{base}/v1/events?user=bob", token="test-token")
+    assert status == 200
+    events = json.loads(body)["events"]
+    assert [e["user"] for e in events] == ["bob"]
+    assert "tenant" not in events[0]
+
+
+def test_read_endpoints_require_token(running_server):
+    base, _ = running_server
+    assert _get(f"{base}/v1/events")[0] == 401
+    assert _get(f"{base}/v1/summary", token="wrong")[0] == 401
+
+
+def test_dashboard_page_is_served(running_server):
+    base, _ = running_server
+    status, body = _get(f"{base}/")
+    assert status == 200
+    assert b"privacyhook team dashboard" in body
+
+
+def test_missing_policy_file_serves_empty_rules(running_server):
+    base, policy_path = running_server
+    policy_path.unlink()
+    status, body = _get(f"{base}/v1/policy", token="test-token")
+    assert status == 200
+    assert json.loads(body)["rules"] == []
+
+
+def test_rejects_non_list_events(running_server):
+    base, _ = running_server
+    status, _ = _post(f"{base}/v1/events", {"events": "nope"}, token="test-token")
+    assert status == 400
+
+
+def test_multi_tenant_event_isolation(multi_tenant_server):
+    base = multi_tenant_server
+    _post(f"{base}/v1/events", _batch("alice", ("tool_call", "Bash")), token="token-a")
+    _post(f"{base}/v1/events", _batch("mallory", ("tool_call", "Bash")), token="token-b")
+    _, body_a = _get(f"{base}/v1/events", token="token-a")
+    _, sum_b = _get(f"{base}/v1/summary", token="token-b")
+    assert {e["user"] for e in json.loads(body_a)["events"]} == {"alice"}
+    assert [d["user"] for d in json.loads(sum_b)["developers"]] == ["mallory"]
