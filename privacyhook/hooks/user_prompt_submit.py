@@ -7,7 +7,8 @@ import sys
 from typing import Any
 
 from ..tokenizer import Tokenizer
-from ._common import block, open_session_and_audit, read_event, write_output
+from . import adapters
+from ._common import run, deny, open_session_and_audit, read_event, write_output
 
 
 def main() -> int:
@@ -26,40 +27,37 @@ def main() -> int:
         categories = sorted({u.split(":")[1] for u in used})
         strict = os.environ.get("PRIVACYHOOK_STRICT") == "1"
         if strict:
-            audit.append(
+            # Blocks only in enforce mode; in observe mode this logs
+            # `would_block` and the prompt goes through with the warning below.
+            deny(
+                audit,
                 hook="user_prompt_submit",
                 event="block",
+                message=f"prompt contains {len(used)} sensitive value(s) in categories {categories}",
                 tool=None,
                 categories=categories,
                 count=len(used),
                 cli=cli,
             )
-            block(
-                f"prompt contains {len(used)} sensitive value(s) in categories {categories}"
+        else:
+            audit.append(
+                hook="user_prompt_submit",
+                event="warn",
+                tool=None,
+                categories=categories,
+                count=len(used),
+                cli=cli,
             )
-        audit.append(
-            hook="user_prompt_submit",
-            event="warn",
-            tool=None,
-            categories=categories,
-            count=len(used),
-            cli=cli,
-        )
         warning = (
-            f"⚠ privacyhook: {len(used)} sensitive value(s) detected in your prompt "
+            f"⚠ bodycam: {len(used)} sensitive value(s) detected in your prompt "
             f"(categories: {', '.join(categories)}). The prompt was sent unchanged, "
-            f"but tokens have been recorded for `privacyhook reveal`."
+            f"but tokens have been recorded for `bodycam reveal`."
         )
-        write_output({
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": warning,
-            }
-        })
+        write_output(adapters.render_prompt_warning(cli, warning))
         return 0
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run(main))

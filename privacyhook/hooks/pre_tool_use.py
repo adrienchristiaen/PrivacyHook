@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import Any
 
+from ..audit import audit_session_id
 from ..policy import PolicyEngine
+from ..team import record as team_record
 from ..workspace import WorkspaceGuard
-from ._common import block, normalize_tool, open_session_and_audit, read_event
+from ._common import run, deny, normalize_tool, open_session_and_audit, read_event
 
 
 def _extract_path(event: dict[str, Any]) -> str | None:
@@ -36,6 +39,11 @@ def main() -> int:
     event = read_event()
     tool = normalize_tool(event.get("tool_name"))
     session, audit, cli = open_session_and_audit()
+    # Activity metadata for the team dashboard (tool name only, no input).
+    # Not written to the local audit log, which records decisions.
+    team_record({"ts": time.time(), "session": audit_session_id(), "cli": cli,
+                 "hook": "pre_tool_use", "event": "tool_call", "tool": tool,
+                 "categories": [], "count": 0})
     try:
         guard = WorkspaceGuard()
         guard.scan()
@@ -53,39 +61,40 @@ def main() -> int:
         if cmd:
             blocked, reason = guard.check_bash(cmd)
             if blocked:
-                audit.append(
-                    hook="pre_tool_use", event="block", tool=tool, categories=[],
-                    count=0, reason=reason, target=cmd[:120], cli=cli,
+                deny(
+                    audit, hook="pre_tool_use", event="block",
+                    message=f"bash command blocked: {reason}",
+                    tool=tool, categories=[], count=0, reason=reason, target=cmd[:120], cli=cli,
                 )
-                block(f"bash command blocked: {reason}")
         elif path:
             blocked, reason = guard.check_path(path)
             if blocked:
-                audit.append(
-                    hook="pre_tool_use", event="block", tool=tool, categories=[],
-                    count=0, reason=reason, target=path, cli=cli,
+                deny(
+                    audit, hook="pre_tool_use", event="block",
+                    message=f"path {path!r} blocked: {reason}",
+                    tool=tool, categories=[], count=0, reason=reason, target=path, cli=cli,
                 )
-                block(f"path {path!r} blocked: {reason}")
 
         target = cmd or path
         if target:
             action, rule = policy.evaluate(tool, command=cmd, path_str=path)
             if action == "block":
-                audit.append(
-                    hook="pre_tool_use", event="policy_block", tool=tool, categories=[],
-                    count=0, reason=rule.reason or rule.pattern, target=target[:120], cli=cli,
+                deny(
+                    audit, hook="pre_tool_use", event="policy_block",
+                    message=f"blocked by policy rule '{rule.id}': {rule.reason or rule.pattern}",
+                    tool=tool, categories=[], count=0, reason=rule.reason or rule.pattern,
+                    target=target[:120], cli=cli,
                 )
-                block(f"blocked by policy rule '{rule.id}': {rule.reason or rule.pattern}")
             elif action == "warn":
                 audit.append(
                     hook="pre_tool_use", event="policy_warn", tool=tool, categories=[],
                     count=0, reason=rule.reason or rule.pattern, target=target[:120], cli=cli,
                 )
-                sys.stderr.write(f"privacyhook: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
+                sys.stderr.write(f"bodycam: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
         return 0
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run(main))

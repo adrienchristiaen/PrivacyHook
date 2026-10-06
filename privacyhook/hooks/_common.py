@@ -13,7 +13,9 @@ import sys
 from typing import Any
 
 from ..audit import AuditLog, generate_key
+from ..mode import is_enforcing
 from ..session import SessionStore
+from . import adapters
 
 
 # Tool name normalization: CLI-specific names → canonical names used in logic
@@ -34,6 +36,15 @@ TOOL_ALIASES: dict[str, str] = {
     "write": "Write",
     "edit": "Edit",
     "webfetch": "WebFetch",
+    # GitHub Copilot CLI
+    "view": "Read",
+    "create": "Write",
+    "str_replace_editor": "Edit",
+    "web_fetch": "WebFetch",  # also Mistral Vibe and Cline
+    # Cline
+    "execute_command": "Bash",
+    "write_to_file": "Write",
+    # Mistral Vibe uses bash / read_file / write_file / edit (covered above)
 }
 
 
@@ -59,11 +70,17 @@ def read_event() -> dict[str, Any]:
         _event_cache = {}
         return {}
     try:
-        _event_cache = json.loads(raw)
-        return _event_cache
+        parsed = json.loads(raw)
     except json.JSONDecodeError:
         _event_cache = {}
         return {}
+    # Cursor, Copilot, Windsurf, Vibe and Cline each send their own shape;
+    # the hooks below only ever see the Claude Code one.
+    _event_cache = adapters.to_canonical(parsed, _cli_from_argv())
+    sid = _event_cache.get("session_id") if isinstance(_event_cache, dict) else None
+    if sid and not any(os.environ.get(v) for v, _ in _CLI_ENV_MARKERS):
+        os.environ["PRIVACYHOOK_SESSION_ID"] = str(sid)
+    return _event_cache
 
 
 _CLI_ENV_MARKERS = [
@@ -113,9 +130,26 @@ def _resolve_session_id(event: dict[str, Any]) -> str:
     return str(sid) if sid else "default"
 
 
-def write_output(payload: dict[str, Any]) -> None:
+_wrote_output = False
+
+
+def write_output(payload: dict[str, Any] | None) -> None:
+    global _wrote_output
+    if payload is None:
+        return
     sys.stdout.write(json.dumps(payload))
     sys.stdout.flush()
+    _wrote_output = True
+
+
+def run(main) -> int:
+    """Entry point wrapper: run the hook, then give CLIs that expect an
+    answer on every call (Cline) their default "allow"."""
+    try:
+        return main()
+    finally:
+        if not _wrote_output:
+            write_output(adapters.default_output(_cli_from_argv()))
 
 
 def _load_persistent_hmac_key() -> bytes:
@@ -148,10 +182,24 @@ def open_session_and_audit() -> tuple[SessionStore, AuditLog, str]:
     return s, audit, cli
 
 
-def block(reason: str, exit_code: int = 2) -> None:
-    # Claude Code honors exit code 2 + stderr. Codex CLI's documented block
-    # protocol is a stdout JSON {"decision": "block", "reason": ...} — emit
-    # both so either interpretation stops the tool call.
-    write_output({"decision": "block", "reason": reason})
-    sys.stderr.write(f"privacyhook: {reason}\n")
-    sys.exit(exit_code)
+def block(reason: str, *, prompt: bool = False) -> None:
+    # Each CLI has its own refusal protocol (see adapters.render_deny):
+    # Claude Code honors exit 2 + stderr, Codex a stdout JSON decision,
+    # Cursor/Copilot/Vibe/Cline a JSON answer, Windsurf exit 2.
+    payload, code = adapters.render_deny(_cli_from_argv(), reason, prompt=prompt)
+    write_output(payload)
+    sys.stderr.write(f"bodycam: {reason}\n")
+    sys.exit(code)
+
+
+def deny(audit: AuditLog, *, hook: str, event: str, message: str, **fields: Any) -> None:
+    """Record a deny decision and, in enforce mode, block the tool call.
+
+    In observe mode (the default) the decision is logged as `would_<event>`
+    and the call goes through — see privacyhook/mode.py.
+    """
+    if is_enforcing():
+        audit.append(hook=hook, event=event, **fields)
+        block(message, prompt=hook == "user_prompt_submit")
+    audit.append(hook=hook, event=f"would_{event}", **fields)
+    sys.stderr.write(f"bodycam (observe mode, not blocked): {message}\n")

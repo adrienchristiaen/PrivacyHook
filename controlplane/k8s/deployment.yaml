@@ -3,7 +3,11 @@ kind: Deployment
 metadata:
   name: privacyhook-controlplane
 spec:
-  replicas: 2
+  # One replica: team activity is stored in SQLite on the PVC below, which a
+  # single pod owns (ReadWriteOnce). Recreate avoids two pods on one volume.
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: privacyhook-controlplane
@@ -31,10 +35,14 @@ spec:
             # tenant's policy.yaml + tenants.yaml per k8s/tenants-example.yaml.
             # - name: PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH
             #   value: /etc/privacyhook/tenants.yaml
+            - name: PRIVACYHOOK_CONTROLPLANE_DB
+              value: /data/events.db
           volumeMounts:
             - name: policy
               mountPath: /etc/privacyhook
               readOnly: true
+            - name: data
+              mountPath: /data
             # Multi-tenant: also mount the tenants Secret, e.g.
             # - name: tenants
             #   mountPath: /etc/privacyhook/tenants.yaml
@@ -48,7 +56,12 @@ spec:
             httpGet:
               path: /healthz
               port: 8957
+      securityContext:
+        fsGroup: 1000  # the image runs as uid 1000; lets it write to the PVC
       volumes:
         - name: policy
           configMap:
             name: privacyhook-policy
+        - name: data
+          persistentVolumeClaim:
+            claimName: privacyhook-data
