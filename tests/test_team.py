@@ -124,3 +124,71 @@ def test_hook_sends_tool_call_and_decision(client_env, control_plane, tmp_path):
     assert {e["event"] for e in events} == {"tool_call", "would_block"}
     assert all(e["user"] == "alice" for e in events)
     assert not any(".env" in json.dumps(e) for e in events)  # path never leaves the machine
+
+
+@pytest.fixture
+def fake_cloud():
+    """A stand-in for Bodycam Cloud's device flow: approves on the second poll."""
+    from http.server import BaseHTTPRequestHandler
+
+    state = {"polls": 0, "names": []}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, status, body):
+            raw = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or b"{}")
+            if self.path == "/api/device/code":
+                state["names"].append(body.get("device_name"))
+                self._send(200, {"device_code": "dev-1", "user_code": "ABCD-EFGH", "verification_uri": "x",
+                                 "expires_in": 30, "interval": 0.01})
+            elif self.path == "/api/device/token":
+                state["polls"] += 1
+                if state["polls"] < 2:
+                    self._send(428, {"error": "authorization_pending"})
+                else:
+                    self._send(200, {"token": "bc_tok", "user": "ada", "email": "ada@example.com", "org": "Acme"})
+            else:
+                self._send(404, {})
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_address[1]}", state
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_login_device_flow_saves_cloud_config(client_env, fake_cloud):
+    import argparse
+    from privacyhook import cli
+
+    url, state = fake_cloud
+    rc = cli.cmd_login(argparse.Namespace(url=url, no_browser=True, cli="all", no_install=True))
+    assert rc == 0
+    assert state["polls"] == 2
+    cfg = team.load_config()
+    assert cfg["url"] == url and cfg["token"] == "bc_tok" and cfg["user"] == "ada"
+
+
+def test_login_reports_unreachable_cloud(client_env, capsys):
+    import argparse
+    from privacyhook import cli
+
+    rc = cli.cmd_login(argparse.Namespace(url="http://127.0.0.1:9", no_browser=True, cli="all", no_install=True))
+    assert rc != 0
+
+
+def test_cloud_url_env_override(monkeypatch):
+    monkeypatch.setenv("BODYCAM_CLOUD_URL", "https://cam.example.com/")
+    assert team.cloud_url() == "https://cam.example.com"
