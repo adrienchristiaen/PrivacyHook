@@ -90,7 +90,7 @@ def main() -> int:
                     hook="pre_tool_use", event="policy_warn", tool=tool, categories=[],
                     count=0, reason=rule.reason or rule.pattern, target=target[:120], cli=cli,
                 )
-                sys.stderr.write(f"privacyhook: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
+                sys.stderr.write(f"bodycam: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
         return 0
     finally:
         session.close()

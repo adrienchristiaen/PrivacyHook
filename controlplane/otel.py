@@ -75,21 +75,21 @@ def _attr(key: str, value) -> dict:
 def to_log_record(tenant: str, ev: dict) -> dict:
     num, text = _SEVERITY.get(ev["event"], (9, "INFO"))
     attrs = [
-        _attr("privacyhook.tenant", tenant),
-        _attr("privacyhook.event", ev["event"]),
-        _attr("privacyhook.tool", ev["tool"]),
-        _attr("privacyhook.cli", ev["cli"]),
-        _attr("privacyhook.hook", ev["hook"]),
-        _attr("privacyhook.team", ev["team"]),
-        _attr("privacyhook.mode", ev["mode"]),
+        _attr("bodycam.tenant", tenant),
+        _attr("bodycam.event", ev["event"]),
+        _attr("bodycam.tool", ev["tool"]),
+        _attr("bodycam.cli", ev["cli"]),
+        _attr("bodycam.hook", ev["hook"]),
+        _attr("bodycam.team", ev["team"]),
+        _attr("bodycam.mode", ev["mode"]),
         _attr("enduser.id", ev["user"]),
         _attr("session.id", ev["session"]),
     ]
     if ev["rule"]:
-        attrs.append(_attr("privacyhook.rule", ev["rule"]))
+        attrs.append(_attr("bodycam.rule", ev["rule"]))
     if ev["categories"]:
-        attrs.append(_attr("privacyhook.secret_categories", ev["categories"]))
-        attrs.append(_attr("privacyhook.secret_count", int(ev["count"])))
+        attrs.append(_attr("bodycam.secret_categories", ev["categories"]))
+        attrs.append(_attr("bodycam.secret_count", int(ev["count"])))
     return {
         "timeUnixNano": str(int(ev["ts"] * 1e9)),
         "observedTimeUnixNano": str(time.time_ns()),
@@ -102,8 +102,8 @@ def to_log_record(tenant: str, ev: dict) -> dict:
 
 def build_payload(records: list[dict]) -> dict:
     return {"resourceLogs": [{
-        "resource": {"attributes": [_attr("service.name", "privacyhook-controlplane")]},
-        "scopeLogs": [{"scope": {"name": "privacyhook"}, "logRecords": records}],
+        "resource": {"attributes": [_attr("service.name", "bodycam-server")]},
+        "scopeLogs": [{"scope": {"name": "bodycam"}, "logRecords": records}],
     }]}
 
 

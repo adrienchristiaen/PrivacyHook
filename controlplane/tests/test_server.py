@@ -278,7 +278,7 @@ def test_dashboard_page_is_served(running_server):
     base, _ = running_server
     status, body = _get(f"{base}/")
     assert status == 200
-    assert b"privacyhook team dashboard" in body
+    assert b"bodycam team dashboard" in body
 
 
 def test_missing_policy_file_serves_empty_rules(running_server):
@@ -389,4 +389,4 @@ def test_events_forwarded_to_otlp_collector(running_server, monkeypatch):
     assert [r["severityText"] for r in records] == ["WARN", "INFO"]
     attrs = {a["key"]: a["value"] for a in records[0]["attributes"]}
     assert attrs["enduser.id"] == {"stringValue": "alice"}
-    assert attrs["privacyhook.event"] == {"stringValue": "would_block"}
+    assert attrs["bodycam.event"] == {"stringValue": "would_block"}

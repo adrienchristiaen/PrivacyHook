@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "privacyhook"
+name = "bodycam"
 version = "0.1.0"
-description = "Privacy-first security layer for AI coding CLIs (Claude Code, Codex, Gemini) via deterministic hooks"
+description = "The tape for coding agents: records and flags what Claude Code, Codex, Cursor, Copilot and other agents do, and masks secrets before the model sees them"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "Adrien Christiaen"}]
@@ -17,7 +17,8 @@ dev = ["pytest>=8.0"]
 controlplane = ["pyyaml>=6.0", "psycopg[binary]>=3.1"]
 
 [project.scripts]
-privacyhook = "privacyhook.cli:main"
+bodycam = "privacyhook.cli:main"
+privacyhook = "privacyhook.cli:main"  # old command name, kept as an alias
 
 [tool.setuptools.packages.find]
 include = ["privacyhook*"]

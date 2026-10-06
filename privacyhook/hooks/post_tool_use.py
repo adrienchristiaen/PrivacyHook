@@ -56,7 +56,7 @@ def main() -> int:
         )
         if replacement is None:
             sys.stderr.write(
-                f"privacyhook: {len(used)} sensitive value(s) in {tool} output "
+                f"bodycam: {len(used)} sensitive value(s) in {tool} output "
                 f"({', '.join(categories)}); {cli} does not let hooks redact tool output\n"
             )
         write_output(replacement)

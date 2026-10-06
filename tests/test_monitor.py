@@ -42,7 +42,7 @@ class TestMonitorServer:
     def test_serves_html_page(self, running_server: str):
         r = urllib.request.urlopen(f"{running_server}/")
         assert r.status == 200
-        assert b"privacyhook monitor" in r.read()
+        assert b"bodycam monitor" in r.read()
 
     def test_api_events_returns_entries(self, running_server: str):
         r = urllib.request.urlopen(f"{running_server}/api/events?last=10")
