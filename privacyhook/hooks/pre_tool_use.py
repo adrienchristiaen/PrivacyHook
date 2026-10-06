@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import Any
 
+from ..audit import audit_session_id
 from ..policy import PolicyEngine
+from ..team import record as team_record
 from ..workspace import WorkspaceGuard
-from ._common import deny, normalize_tool, open_session_and_audit, read_event
+from ._common import run, deny, normalize_tool, open_session_and_audit, read_event
 
 
 def _extract_path(event: dict[str, Any]) -> str | None:
@@ -36,6 +39,11 @@ def main() -> int:
     event = read_event()
     tool = normalize_tool(event.get("tool_name"))
     session, audit, cli = open_session_and_audit()
+    # Activity metadata for the team dashboard (tool name only, no input).
+    # Not written to the local audit log, which records decisions.
+    team_record({"ts": time.time(), "session": audit_session_id(), "cli": cli,
+                 "hook": "pre_tool_use", "event": "tool_call", "tool": tool,
+                 "categories": [], "count": 0})
     try:
         guard = WorkspaceGuard()
         guard.scan()
@@ -82,11 +90,11 @@ def main() -> int:
                     hook="pre_tool_use", event="policy_warn", tool=tool, categories=[],
                     count=0, reason=rule.reason or rule.pattern, target=target[:120], cli=cli,
                 )
-                sys.stderr.write(f"privacyhook: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
+                sys.stderr.write(f"bodycam: policy warning ({rule.id}): {rule.reason or rule.pattern}\n")
         return 0
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run(main))

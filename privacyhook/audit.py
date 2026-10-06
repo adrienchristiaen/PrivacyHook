@@ -30,6 +30,18 @@ def default_audit_path() -> Path:
     return Path.home() / ".local" / "share" / "privacyhook" / "audit.jsonl"
 
 
+def audit_session_id() -> str:
+    session_id = (os.environ.get("CLAUDE_SESSION_ID")
+                  or os.environ.get("GEMINI_SESSION_ID")
+                  or os.environ.get("CODEX_SESSION_ID")
+                  or os.environ.get("MISTRAL_SESSION_ID")
+                  # set by the hooks from the payload for CLIs that pass the
+                  # session id on stdin (Cursor, Copilot, Windsurf, Vibe, Cline)
+                  or os.environ.get("PRIVACYHOOK_SESSION_ID")
+                  or "default")
+    return session_id[:16]
+
+
 def generate_key() -> bytes:
     return secrets.token_bytes(32)
 
@@ -80,14 +92,9 @@ class AuditLog:
         target: str | None = None,
         cli: str | None = None,
     ) -> None:
-        session_id = (os.environ.get("CLAUDE_SESSION_ID")
-                      or os.environ.get("GEMINI_SESSION_ID")
-                      or os.environ.get("CODEX_SESSION_ID")
-                      or os.environ.get("MISTRAL_SESSION_ID")
-                      or "default")
         payload: dict = {
             "ts": time.time(),
-            "session": session_id[:16],
+            "session": audit_session_id(),
             "cli": cli or "unknown",
             "hook": hook,
             "event": event,
@@ -106,6 +113,8 @@ class AuditLog:
         })
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload) + "\n")
+        from .team import record  # local import: team imports this module
+        record(payload)
 
     def read_all(self) -> list[dict]:
         if not self.path.exists():

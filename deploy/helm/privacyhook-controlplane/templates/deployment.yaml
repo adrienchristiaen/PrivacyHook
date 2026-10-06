@@ -1,0 +1,120 @@
+{{- $pg := include "ph.usesPostgres" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ph.fullname" . }}
+  labels: {{- include "ph.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  {{- if not $pg }}
+  strategy:
+    type: Recreate  # SQLite file on a ReadWriteOnce volume: one pod at a time
+  {{- end }}
+  selector:
+    matchLabels: {{- include "ph.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "ph.selector" . | nindent 8 }}
+      annotations:
+        checksum/policy: {{ toYaml .Values.policy.rules | sha256sum | trunc 16 }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: controlplane
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - name: http
+              containerPort: 8957
+          env:
+            - name: PRIVACYHOOK_CONTROLPLANE_POLICY_PATH
+              value: /etc/privacyhook/policy.yaml
+            {{- if .Values.tenants.existingSecret }}
+            - name: PRIVACYHOOK_CONTROLPLANE_TENANTS_PATH
+              value: /etc/privacyhook-tenants/tenants.yaml
+            {{- else }}
+            - name: PRIVACYHOOK_CONTROLPLANE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ph.tokenSecret" . }}
+                  key: {{ .Values.token.existingSecretKey }}
+            {{- end }}
+            {{- if $pg }}
+            - name: PRIVACYHOOK_CONTROLPLANE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | default (printf "%s-postgres" (include "ph.fullname" .)) }}
+                  key: {{ ternary .Values.postgres.existingSecretKey "url" (not (empty .Values.postgres.existingSecret)) }}
+            {{- else }}
+            - name: PRIVACYHOOK_CONTROLPLANE_DB
+              value: /data/events.db
+            {{- end }}
+            {{- if .Values.otlp.endpoint }}
+            - name: PRIVACYHOOK_CONTROLPLANE_OTLP_ENDPOINT
+              value: {{ .Values.otlp.endpoint | quote }}
+            {{- if .Values.otlp.headersSecret }}
+            - name: PRIVACYHOOK_CONTROLPLANE_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.otlp.headersSecret }}
+                  key: headers
+            {{- end }}
+            {{- end }}
+          volumeMounts:
+            - name: policy
+              mountPath: /etc/privacyhook
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.tenants.existingSecret }}
+            - name: tenants
+              mountPath: /etc/privacyhook-tenants
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: policy
+          configMap:
+            name: {{ .Values.policy.existingConfigMap | default (printf "%s-policy" (include "ph.fullname" .)) }}
+        - name: data
+          {{- if and (not $pg) .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "ph.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.tenants.existingSecret }}
+        - name: tenants
+          secret:
+            secretName: {{ .Values.tenants.existingSecret }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

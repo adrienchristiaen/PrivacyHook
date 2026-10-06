@@ -1,0 +1,17 @@
+privacyhook control plane is running.
+
+{{- if .Values.ingress.enabled }}
+Dashboard: http{{ if .Values.ingress.tls.secretName }}s{{ end }}://{{ .Values.ingress.host }}/
+Each developer runs once:
+  privacyhook join http{{ if .Values.ingress.tls.secretName }}s{{ end }}://{{ .Values.ingress.host }} --token <team token>
+{{- else }}
+Try it locally:
+  kubectl port-forward svc/{{ include "ph.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  open http://127.0.0.1:{{ .Values.service.port }}/
+Expose it to developers with ingress.enabled=true (and TLS) before they run `privacyhook join`.
+{{- end }}
+
+Storage: {{ if include "ph.usesPostgres" . }}Postgres ({{ .Values.replicaCount }} replica(s)){{ else }}SQLite on a PersistentVolume (single replica){{ end }}
+{{- if .Values.otlp.endpoint }}
+OpenTelemetry: events forwarded to {{ .Values.otlp.endpoint }}
+{{- end }}

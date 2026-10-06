@@ -1,0 +1,10 @@
+apiVersion: v2
+name: privacyhook-controlplane
+description: Team dashboard, central policy and telemetry export for privacyhook (AI coding agent monitoring)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/adrienchristiaen/PrivacyHook
+sources:
+  - https://github.com/adrienchristiaen/PrivacyHook
+keywords: [ai, agents, observability, security, claude-code, codex]

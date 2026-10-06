@@ -47,10 +47,14 @@ class RemotePolicySource:
     cache_path: Path | None = None
 
     def __post_init__(self) -> None:
-        if self.url is None:
-            self.url = os.environ.get("PRIVACYHOOK_CONTROLPLANE_URL") or None
-        if self.token is None:
-            self.token = os.environ.get("PRIVACYHOOK_CONTROLPLANE_TOKEN") or None
+        if self.url is None or self.token is None:
+            # Env vars first, then the file written by `privacyhook join`.
+            from .team import load_config
+            cfg = load_config() or {}
+            if self.url is None:
+                self.url = cfg.get("url") or None
+            if self.token is None:
+                self.token = cfg.get("token") or None
         if self.cache_path is None:
             self.cache_path = default_cache_path()
 

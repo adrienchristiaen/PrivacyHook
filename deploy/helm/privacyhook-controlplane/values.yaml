@@ -1,0 +1,81 @@
+# Minimal install:
+#   helm install privacyhook oci://ghcr.io/adrienchristiaen/charts/privacyhook-controlplane \
+#     --set token.value=<team-token>
+
+image:
+  repository: ghcr.io/adrienchristiaen/privacyhook-controlplane
+  tag: ""            # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Developers join with: privacyhook join <url> --token <this token>
+token:
+  value: ""                # chart creates a Secret from this...
+  existingSecret: ""       # ...or reference your own (e.g. from External Secrets / Vault)
+  existingSecretKey: token
+
+# Multi-tenant hosting: a Secret holding tenants.yaml (see controlplane/k8s/tenants-example.yaml).
+# When set, `token` is ignored.
+tenants:
+  existingSecret: ""
+
+# Central policy rules (optional). Without rules the server only collects activity.
+policy:
+  rules: []
+  #  - id: no-prod-deploy-from-laptop
+  #    tool: Bash
+  #    match_type: command_regex
+  #    pattern: "deploy.*--env[= ]prod"
+  #    action: block
+  #    reason: "prod deploys must go through CI"
+  existingConfigMap: ""    # a ConfigMap with a policy.yaml key, instead of `rules`
+
+# Storage. Default: SQLite on a PersistentVolume, single replica.
+# Set a Postgres URL to run several replicas (high availability).
+postgres:
+  url: ""                  # postgresql://user:pass@host:5432/db
+  existingSecret: ""       # or a Secret holding the URL
+  existingSecretKey: url
+
+persistence:
+  enabled: true            # SQLite only; ignored with Postgres
+  size: 5Gi
+  storageClass: ""
+  existingClaim: ""
+
+replicaCount: 1            # >1 requires postgres
+
+# Forward events to an OpenTelemetry collector (OTLP/HTTP), e.g. http://otel-collector:4318
+otlp:
+  endpoint: ""
+  headersSecret: ""        # optional Secret with key `headers`: "dd-api-key=xxx,foo=bar"
+
+service:
+  type: ClusterIP
+  port: 8957
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls:
+    secretName: ""         # set to terminate TLS at the ingress (recommended)
+
+# Prometheus Operator: scrape /metrics
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+podAnnotations: {}
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+nodeSelector: {}
+tolerations: []
+affinity: {}
