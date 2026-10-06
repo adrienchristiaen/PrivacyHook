@@ -455,6 +455,46 @@ def cmd_join(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_login(args: argparse.Namespace) -> int:
+    import platform
+    import webbrowser
+
+    url = (args.url or T.cloud_url()).rstrip("/")
+    device = T.start_device_login(url, platform.node() or "unknown")
+    if device is None:
+        return _exit(f"cannot reach {url} — check the address or your connection")
+    link = device.get("verification_uri_complete") or device.get("verification_uri") or f"{url}/device"
+    print(f"Your code: {BOLD(device['user_code'])}")
+    print(f"Approve this machine in your browser: {link}")
+    if not args.no_browser:
+        try:
+            webbrowser.open(link)
+        except Exception:
+            pass
+    interval = max(1.0, float(device.get("interval") or 3))
+    deadline = time.time() + float(device.get("expires_in") or 600)
+    print(DIM("  waiting for approval… (Ctrl-C to cancel)"))
+    while time.time() < deadline:
+        time.sleep(interval)
+        state, data = T.poll_device_login(url, device["device_code"])
+        if state == "approved":
+            user = data.get("user") or T.default_user()
+            T.save_config(url, data["token"], user)
+            print(GREEN("✓ signed in to ") + BOLD(data.get("org") or url) + DIM(f"  as {data.get('email') or user}"))
+            if not args.no_install:
+                rc = cmd_install(argparse.Namespace(cli=args.cli, dry_run=False, yes=True))
+                if rc:
+                    return rc
+            print(DIM("  activity metadata (never commands, paths or secrets) now shows up at ") + f"{url}/app")
+            print(DIM(f"  mode: {current_mode()}  —  change with `bodycam mode enforce`"))
+            return 0
+        if state == "slow_down":
+            interval += 2
+        elif state in ("expired", "error"):
+            return _exit("the code expired or was refused — run `bodycam login` again")
+    return _exit("timed out waiting for approval — run `bodycam login` again")
+
+
 def cmd_leave(args: argparse.Namespace) -> int:
     if T.clear_config():
         print("left the team — events stay local from now on (hooks are still installed)")
@@ -547,6 +587,14 @@ def build_parser() -> argparse.ArgumentParser:
                       help="which CLIs to install hooks for (default: every detected CLI)")
     join.add_argument("--no-install", action="store_true", help="only save the team config")
     join.set_defaults(func=cmd_join)
+
+    login = sub.add_parser("login", help="sign in to Bodycam Cloud from your browser and install hooks")
+    login.add_argument("--url", help="Bodycam Cloud address (default: $BODYCAM_CLOUD_URL or https://app.bodycam.dev)")
+    login.add_argument("--no-browser", action="store_true", help="print the link instead of opening a browser")
+    login.add_argument("--cli", default="all", choices=cli_choices,
+                       help="which CLIs to install hooks for (default: every detected CLI)")
+    login.add_argument("--no-install", action="store_true", help="only save the sign-in")
+    login.set_defaults(func=cmd_login)
 
     leave = sub.add_parser("leave", help="stop syncing with the team control plane")
     leave.set_defaults(func=cmd_leave)

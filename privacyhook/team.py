@@ -131,6 +131,39 @@ def check_connection(url: str, token: str | None) -> tuple[bool, str]:
     return False, f"unexpected HTTP {status}"
 
 
+DEFAULT_CLOUD_URL = "https://app.bodycam.dev"
+
+
+def cloud_url() -> str:
+    return (os.environ.get("BODYCAM_CLOUD_URL") or DEFAULT_CLOUD_URL).rstrip("/")
+
+
+def _post_json(url: str, body: dict) -> tuple[int, dict]:
+    status, raw = _request(url, None, data=json.dumps(body).encode("utf-8"))
+    try:
+        data = json.loads(raw.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        data = {}
+    return status, data if isinstance(data, dict) else {}
+
+
+def start_device_login(url: str, device_name: str) -> dict | None:
+    """Ask Bodycam Cloud for a device code (`bodycam login`, step 1)."""
+    status, data = _post_json(f"{url.rstrip('/')}/api/device/code", {"device_name": device_name})
+    if status != 200 or not data.get("device_code") or not data.get("user_code"):
+        return None
+    return data
+
+
+def poll_device_login(url: str, device_code: str) -> tuple[str, dict]:
+    """One poll (step 2). Returns ("approved", data), ("pending", {}),
+    ("slow_down", {}), ("expired", {}) or ("error", {})."""
+    status, data = _post_json(f"{url.rstrip('/')}/api/device/token", {"device_code": device_code})
+    if status == 200 and data.get("token"):
+        return "approved", data
+    return {428: "pending", 429: "slow_down", 410: "expired", 0: "pending"}.get(status, "error"), {}
+
+
 def sanitize(payload: dict, *, user: str) -> dict:
     out = {k: payload[k] for k in _SAFE_FIELDS if k in payload}
     out["user"] = user
