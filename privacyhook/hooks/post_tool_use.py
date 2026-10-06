@@ -7,7 +7,8 @@ import sys
 from typing import Any
 
 from ..tokenizer import Tokenizer
-from ._common import normalize_tool, open_session_and_audit, read_event, write_output
+from . import adapters
+from ._common import run, normalize_tool, open_session_and_audit, read_event, write_output
 
 TARGET_TOOLS = {"Bash", "Read", "WebFetch"}
 
@@ -41,24 +42,28 @@ def main() -> int:
         if not used:
             return 0
         categories = sorted({u.split(":")[1] for u in used})
+        replacement = adapters.render_redaction(cli, redacted)
+        # Cursor and Cline let a hook read a tool result but not change it:
+        # the secret still reaches the model, so record it as detected, not
+        # redacted, and say so on stderr.
         audit.append(
             hook="post_tool_use",
-            event="redact",
+            event="redact" if replacement else "secret_detected",
             tool=tool,
             categories=categories,
             count=len(used),
             cli=cli,
         )
-        write_output({
-            "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
-                "updatedToolOutput": redacted,
-            }
-        })
+        if replacement is None:
+            sys.stderr.write(
+                f"bodycam: {len(used)} sensitive value(s) in {tool} output "
+                f"({', '.join(categories)}); {cli} does not let hooks redact tool output\n"
+            )
+        write_output(replacement)
         return 0
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run(main))

@@ -1,4 +1,4 @@
-"""Manage privacyhook hook registration across Claude Code, Codex CLI, Gemini CLI, and OpenCode.
+"""Manage privacyhook hook registration across the supported agent CLIs and IDEs.
 
 Operations:
 
@@ -20,6 +20,11 @@ claude    — Claude Code  (~/.claude/settings.json)
 codex     — OpenAI Codex CLI  (~/.codex/hooks.json)
 gemini    — Gemini CLI  (~/.gemini/settings.json)
 opencode  — OpenCode  (~/.config/opencode/plugin/privacyhook.js)
+cursor    — Cursor  (~/.cursor/hooks.json)
+copilot   — GitHub Copilot CLI  (~/.copilot/hooks/privacyhook.json)
+windsurf  — Windsurf  (~/.codeium/windsurf/hooks.json)
+vibe      — Mistral Vibe  (~/.vibe/hooks.toml, a marked [[hooks]] block)
+cline     — Cline  (~/Documents/Cline/Hooks/<Event> scripts)
 """
 
 from __future__ import annotations
@@ -100,6 +105,92 @@ CLI_ADAPTERS: dict[str, dict] = {
         "windows_settings": "~/AppData/Roaming/opencode/plugin/privacyhook.js",
         "kind": "js_plugin",
     },
+    # The adapters below each have their own config format; `kind` picks the
+    # installer and `events` lists (event name, hook module) pairs. Their
+    # stdin/stdout dialects are translated in privacyhook/hooks/adapters.py.
+    "cursor": {
+        "label": "Cursor",
+        "binary": "cursor",
+        "detect_dir": "~/.cursor",
+        "settings_env": "PRIVACYHOOK_CURSOR_HOOKS_PATH",
+        "default_settings": "~/.cursor/hooks.json",
+        "windows_settings": "~/.cursor/hooks.json",
+        "kind": "flat_json",
+        "version": 1,
+        "events": [
+            ("beforeShellExecution", "pre_tool_use"),
+            ("beforeReadFile", "pre_tool_use"),
+            ("afterShellExecution", "post_tool_use"),
+            ("beforeSubmitPrompt", "user_prompt_submit"),
+        ],
+    },
+    "copilot": {
+        "label": "GitHub Copilot CLI",
+        "binary": "copilot",
+        "detect_dir": "~/.copilot",
+        "settings_env": "PRIVACYHOOK_COPILOT_HOOKS_PATH",
+        "home_env": ("COPILOT_HOME", "hooks/privacyhook.json"),
+        "default_settings": "~/.copilot/hooks/privacyhook.json",
+        "windows_settings": "~/.copilot/hooks/privacyhook.json",
+        "kind": "flat_json",
+        "version": 1,
+        "events": [
+            ("preToolUse", "pre_tool_use"),
+            ("postToolUse", "post_tool_use"),
+            ("userPromptSubmitted", "user_prompt_submit"),
+        ],
+    },
+    "windsurf": {
+        "label": "Windsurf",
+        "binary": "windsurf",
+        "detect_dir": "~/.codeium/windsurf",
+        "settings_env": "PRIVACYHOOK_WINDSURF_HOOKS_PATH",
+        "default_settings": "~/.codeium/windsurf/hooks.json",
+        "windows_settings": "~/.codeium/windsurf/hooks.json",
+        "kind": "flat_json",
+        # Windsurf's post hooks carry no tool output, so there is nothing to
+        # redact; pre hooks cover paths, commands and prompts.
+        "events": [
+            ("pre_run_command", "pre_tool_use"),
+            ("pre_read_code", "pre_tool_use"),
+            ("pre_write_code", "pre_tool_use"),
+            ("pre_user_prompt", "user_prompt_submit"),
+        ],
+    },
+    "vibe": {
+        "label": "Mistral Vibe",
+        "binary": "vibe",
+        "detect_dir": "~/.vibe",
+        "settings_env": "PRIVACYHOOK_VIBE_HOOKS_PATH",
+        "home_env": ("VIBE_HOME", "hooks.toml"),
+        "default_settings": "~/.vibe/hooks.toml",
+        "windows_settings": "~/.vibe/hooks.toml",
+        "kind": "toml_block",
+        # Vibe has no prompt hook.
+        "events": [
+            ("pre_tool", "pre_tool_use", "re:^(bash|read_file|write_file|edit)$"),
+            ("post_tool", "post_tool_use", "re:^(bash|read_file|web_fetch)$"),
+        ],
+    },
+    "cline": {
+        "label": "Cline",
+        "binary": "cline",
+        "detect_dir": "~/Documents/Cline",
+        "settings_env": "PRIVACYHOOK_CLINE_HOOKS_DIR",
+        "default_settings": "~/Documents/Cline/Hooks",
+        "windows_settings": "~/Documents/Cline/Hooks",
+        "kind": "script_dir",
+        "events": [
+            ("PreToolUse", "pre_tool_use"),
+            ("PostToolUse", "post_tool_use"),
+            ("UserPromptSubmit", "user_prompt_submit"),
+        ],
+    },
+}
+
+# Agent tools we were asked about that expose no hook API to plug into.
+UNSUPPORTED_CLIS = {
+    "aider": "Aider has no hook API: it cannot report tool calls or let a hook redact output.",
 }
 
 SUPPORTED_CLIS = list(CLI_ADAPTERS.keys())
@@ -136,6 +227,10 @@ def settings_path(cli: str = "claude") -> Path:
         override = os.environ.get(env_key)
         if override:
             return Path(override)
+    if adapter.get("home_env"):
+        home_var, rel = adapter["home_env"]
+        if os.environ.get(home_var):
+            return Path(os.environ[home_var]).expanduser() / rel
     raw = adapter["windows_settings"] if sys.platform == "win32" else adapter["default_settings"]
     return Path(raw).expanduser()
 
@@ -360,6 +455,205 @@ def _strip_ours(bucket_entries: list) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Cursor, Copilot CLI, Windsurf (flat JSON), Vibe (TOML), Cline (scripts)
+# ---------------------------------------------------------------------------
+
+def _powershell_command(module: str, cli: str) -> str:
+    return f'& "{sys.executable}" -m {module} --cli {cli}'
+
+
+def _flat_entry(cli: str, module: str) -> dict:
+    cmd = _hook_command(f"privacyhook.hooks.{module}", cli)
+    if cli == "copilot":
+        return {"type": "command", "bash": cmd,
+                "powershell": _powershell_command(f"privacyhook.hooks.{module}", cli), "timeoutSec": 10}
+    if cli == "windsurf":
+        return {"command": cmd, "powershell": _powershell_command(f"privacyhook.hooks.{module}", cli),
+                "show_output": False}
+    return {"command": cmd}
+
+
+def _entry_is_ours(entry: dict) -> bool:
+    return any(_is_ours(str(entry.get(k, ""))) or "-m privacyhook.hooks." in str(entry.get(k, ""))
+               for k in ("command", "bash", "powershell"))
+
+
+def _install_flat_json(cli: str, path: Path, *, dry_run: bool) -> dict:
+    adapter = CLI_ADAPTERS[cli]
+    data = _load(path)
+    before = deepcopy(data)
+    if adapter.get("version") is not None:
+        data.setdefault("version", adapter["version"])
+    hooks_root = data.setdefault("hooks", {})
+    for event, _ in adapter["events"]:
+        hooks_root[event] = [e for e in hooks_root.get(event, []) if not _entry_is_ours(e)]
+    for event, module in adapter["events"]:
+        hooks_root[event].append(_flat_entry(cli, module))
+    added = len(adapter["events"])
+    report = {"cli": cli, "added": added, "dry_run": dry_run, "path": str(path),
+              "diff_summary": f"+{added} privacyhook hook entries for {cli}",
+              "before": before, "after": data}
+    if dry_run:
+        return report
+    if path.exists():
+        backup_path(cli).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return report
+
+
+def _uninstall_flat_json(cli: str, path: Path) -> dict:
+    data = _load(path)
+    hooks_root = data.get("hooks", {})
+    removed = 0
+    for event in list(hooks_root):
+        kept = [e for e in hooks_root[event] if not _entry_is_ours(e)]
+        removed += len(hooks_root[event]) - len(kept)
+        hooks_root[event] = kept
+    if removed:
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return {"cli": cli, "removed": removed, "path": str(path)}
+
+
+def _status_flat_json(cli: str, path: Path) -> dict:
+    hooks_root = _load(path).get("hooks", {})
+    events = [ev for ev, _ in CLI_ADAPTERS[cli]["events"]]
+    found = [ev for ev in events if any(_entry_is_ours(e) for e in hooks_root.get(ev, []))]
+    return {"cli": cli, "label": CLI_ADAPTERS[cli]["label"], "installed": len(found) == len(events),
+            "hooks": found, "path": str(path)}
+
+
+_TOML_BEGIN = "# >>> privacyhook (managed block, removed by `privacyhook uninstall --cli vibe`)"
+_TOML_END = "# <<< privacyhook"
+_TOML_BLOCK_RE = re.compile(rf"\n*{re.escape(_TOML_BEGIN)}.*?{re.escape(_TOML_END)}\n?", re.DOTALL)
+
+
+def _vibe_block() -> str:
+    lines = [_TOML_BEGIN]
+    for event, module, match in CLI_ADAPTERS["vibe"]["events"]:
+        # JSON string escapes are valid TOML basic-string escapes.
+        lines += [
+            "[[hooks]]",
+            f'name = "privacyhook-{event.replace("_", "-")}"',
+            f'type = "{event}"',
+            f"match = {json.dumps(match)}",
+            f"command = {json.dumps(_hook_command(f'privacyhook.hooks.{module}', 'vibe'))}",
+            "timeout = 10.0",
+            "",
+        ]
+    lines[-1] = _TOML_END
+    return "\n".join(lines) + "\n"
+
+
+def _install_toml_block(path: Path, *, dry_run: bool) -> dict:
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    stripped = _TOML_BLOCK_RE.sub("\n", text).rstrip("\n")
+    new_text = (stripped + "\n\n" if stripped else "") + _vibe_block()
+    added = len(CLI_ADAPTERS["vibe"]["events"])
+    report = {"cli": "vibe", "added": added, "dry_run": dry_run, "path": str(path),
+              "diff_summary": f"+{added} privacyhook [[hooks]] entries for vibe",
+              "before": text, "after": new_text}
+    if dry_run:
+        return report
+    if path.exists():
+        backup_path("vibe").write_text(text, encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new_text, encoding="utf-8")
+    return report
+
+
+def _uninstall_toml_block(path: Path) -> dict:
+    if not path.exists():
+        return {"cli": "vibe", "removed": 0, "path": str(path)}
+    text = path.read_text(encoding="utf-8")
+    if _TOML_BEGIN not in text:
+        return {"cli": "vibe", "removed": 0, "path": str(path)}
+    rest = _TOML_BLOCK_RE.sub("\n", text).strip("\n")
+    path.write_text(rest + "\n" if rest else "", encoding="utf-8")
+    return {"cli": "vibe", "removed": len(CLI_ADAPTERS["vibe"]["events"]), "path": str(path)}
+
+
+def _status_toml_block(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    installed = _TOML_BEGIN in text and _TOML_END in text
+    return {"cli": "vibe", "label": CLI_ADAPTERS["vibe"]["label"], "installed": installed,
+            "hooks": [e[0] for e in CLI_ADAPTERS["vibe"]["events"]] if installed else [],
+            "path": str(path)}
+
+
+_SCRIPT_MARKER = "privacyhook-managed-hook"
+
+
+def _script_path(directory: Path, event: str) -> Path:
+    return directory / (f"{event}.ps1" if sys.platform == "win32" else event)
+
+
+def _script_content(module: str) -> str:
+    if sys.platform == "win32":
+        return (f"# {_SCRIPT_MARKER}: generated by `privacyhook install --cli cline`.\n"
+                f"$payload = [Console]::In.ReadToEnd()\n"
+                f"$payload | {_powershell_command(f'privacyhook.hooks.{module}', 'cline')}\n"
+                f"exit $LASTEXITCODE\n")
+    return (f"#!/bin/sh\n# {_SCRIPT_MARKER}: generated by `privacyhook install --cli cline`.\n"
+            f'exec "{sys.executable}" -m privacyhook.hooks.{module} --cli cline\n')
+
+
+def _script_is_ours(path: Path) -> bool:
+    try:
+        return _SCRIPT_MARKER in path.read_text(encoding="utf-8")[:300]
+    except OSError:
+        return False
+
+
+def _install_script_dir(directory: Path, *, dry_run: bool) -> dict:
+    events = CLI_ADAPTERS["cline"]["events"]
+    for event, _ in events:
+        p = _script_path(directory, event)
+        if p.exists() and not _script_is_ours(p):
+            raise RuntimeError(
+                f"{p} exists and isn't a privacyhook-managed hook — refusing to overwrite. "
+                f"Merge it by hand or move it away first."
+            )
+    report = {"cli": "cline", "added": len(events), "dry_run": dry_run, "path": str(directory),
+              "diff_summary": f"+{len(events)} privacyhook hook scripts for cline",
+              "after": {str(_script_path(directory, e)): _script_content(m) for e, m in events}}
+    if dry_run:
+        return report
+    directory.mkdir(parents=True, exist_ok=True)
+    for event, module in events:
+        p = _script_path(directory, event)
+        p.write_text(_script_content(module), encoding="utf-8")
+        p.chmod(0o755)
+    return report
+
+
+def _uninstall_script_dir(directory: Path) -> dict:
+    removed = 0
+    for event, _ in CLI_ADAPTERS["cline"]["events"]:
+        p = _script_path(directory, event)
+        if p.exists() and _script_is_ours(p):
+            p.unlink()
+            removed += 1
+    return {"cli": "cline", "removed": removed, "path": str(directory)}
+
+
+def _status_script_dir(directory: Path) -> dict:
+    events = [e for e, _ in CLI_ADAPTERS["cline"]["events"]]
+    found = [e for e in events if _script_is_ours(_script_path(directory, e))]
+    return {"cli": "cline", "label": CLI_ADAPTERS["cline"]["label"], "installed": len(found) == len(events),
+            "hooks": found, "path": str(directory)}
+
+
+_KIND_HANDLERS = {
+    "flat_json": (lambda cli, p, dry: _install_flat_json(cli, p, dry_run=dry), _uninstall_flat_json, _status_flat_json),
+    "toml_block": (lambda cli, p, dry: _install_toml_block(p, dry_run=dry),
+                   lambda cli, p: _uninstall_toml_block(p), lambda cli, p: _status_toml_block(p)),
+    "script_dir": (lambda cli, p, dry: _install_script_dir(p, dry_run=dry),
+                   lambda cli, p: _uninstall_script_dir(p), lambda cli, p: _status_script_dir(p)),
+}
+
+
+# ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------
 
@@ -367,7 +661,11 @@ def detect_cli() -> list[str]:
     """Return names of installed CLIs (binary found in PATH)."""
     found = []
     for name, adapter in CLI_ADAPTERS.items():
-        if shutil.which(adapter["binary"]):
+        # IDE-based agents (Cursor, Windsurf, Cline) often have no binary on
+        # PATH; their config directory is the signal instead.
+        if shutil.which(adapter["binary"]) or (
+            adapter.get("detect_dir") and Path(adapter["detect_dir"]).expanduser().is_dir()
+        ):
             found.append(name)
     return found
 
@@ -382,6 +680,8 @@ def install(cli: str = "claude", *, dry_run: bool = False, yes: bool = False) ->
         raise ValueError(f"unknown CLI {cli!r}, choose from {SUPPORTED_CLIS}")
     if CLI_ADAPTERS[cli].get("kind") == "js_plugin":
         return _install_opencode(settings_path(cli), dry_run=dry_run)
+    if CLI_ADAPTERS[cli].get("kind") in _KIND_HANDLERS:
+        return _KIND_HANDLERS[CLI_ADAPTERS[cli]["kind"]][0](cli, settings_path(cli), dry_run)
     path = settings_path(cli)
     data = _load(path)
     before = deepcopy(data)
@@ -427,6 +727,8 @@ def uninstall(cli: str = "claude", *, yes: bool = False) -> dict:
         raise ValueError(f"unknown CLI {cli!r}")
     if CLI_ADAPTERS[cli].get("kind") == "js_plugin":
         return _uninstall_opencode(settings_path(cli))
+    if CLI_ADAPTERS[cli].get("kind") in _KIND_HANDLERS:
+        return _KIND_HANDLERS[CLI_ADAPTERS[cli]["kind"]][1](cli, settings_path(cli))
     path = settings_path(cli)
     data = _load(path)
     hooks_root = data.get(CLI_ADAPTERS[cli]["hooks_key"], {})
@@ -449,6 +751,8 @@ def status(cli: str = "claude") -> dict:
         raise ValueError(f"unknown CLI {cli!r}")
     if CLI_ADAPTERS[cli].get("kind") == "js_plugin":
         return _status_opencode(settings_path(cli))
+    if CLI_ADAPTERS[cli].get("kind") in _KIND_HANDLERS:
+        return _KIND_HANDLERS[CLI_ADAPTERS[cli]["kind"]][2](cli, settings_path(cli))
     path = settings_path(cli)
     data = _load(path)
     hooks_root = data.get(CLI_ADAPTERS[cli]["hooks_key"], {})

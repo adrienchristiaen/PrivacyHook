@@ -35,6 +35,9 @@ def audit_session_id() -> str:
                   or os.environ.get("GEMINI_SESSION_ID")
                   or os.environ.get("CODEX_SESSION_ID")
                   or os.environ.get("MISTRAL_SESSION_ID")
+                  # set by the hooks from the payload for CLIs that pass the
+                  # session id on stdin (Cursor, Copilot, Windsurf, Vibe, Cline)
+                  or os.environ.get("PRIVACYHOOK_SESSION_ID")
                   or "default")
     return session_id[:16]
 
