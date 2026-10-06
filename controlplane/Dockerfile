@@ -5,7 +5,8 @@ WORKDIR /app
 
 COPY privacyhook ./privacyhook
 COPY controlplane ./controlplane
-RUN pip install --no-cache-dir pyyaml
+# psycopg is only used when PRIVACYHOOK_CONTROLPLANE_DATABASE_URL points at Postgres.
+RUN pip install --no-cache-dir pyyaml "psycopg[binary]>=3.1"
 
 RUN mkdir /data && chown privacyhook /data
 USER privacyhook

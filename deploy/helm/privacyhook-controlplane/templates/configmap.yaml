@@ -1,0 +1,14 @@
+{{- if not .Values.policy.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ph.fullname" . }}-policy
+  labels: {{- include "ph.labels" . | nindent 4 }}
+data:
+  policy.yaml: |
+{{- if .Values.policy.rules }}
+{{ toYaml .Values.policy.rules | indent 4 }}
+{{- else }}
+    []
+{{- end }}
+{{- end }}

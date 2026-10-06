@@ -14,7 +14,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-controlplane = ["pyyaml>=6.0"]
+controlplane = ["pyyaml>=6.0", "psycopg[binary]>=3.1"]
 
 [project.scripts]
 privacyhook = "privacyhook.cli:main"

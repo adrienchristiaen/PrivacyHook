@@ -308,6 +308,11 @@ docker run -d -p 8957:8957 -v privacyhook-data:/data \
 privacyhook join https://privacyhook.acme.internal --token <team-token>
 ```
 
+On Kubernetes, use the [Helm chart or Terraform module](controlplane/README.md#deploy-on-kubernetes).
+Events can also flow into your own stack: Prometheus `/metrics`, OpenTelemetry
+(OTLP), or an incremental NDJSON/CSV export for BigQuery, Snowflake and co —
+see [Plug into your data platform](controlplane/README.md#plug-into-your-data-platform).
+
 The dashboard at the server's URL shows active developers, agent sessions,
 tool calls, secrets masked and what would have been blocked, per developer and
 per tool. Only metadata is sent (event type, tool name, agent, developer,
@@ -472,7 +477,8 @@ pytest -q   # 122 passed
 - [ ] Ollama contextual rewriting (200 ms timeout, regex fallback)
 - [ ] `Stop` hook with per-session redaction summary
 - [ ] Homebrew formula + PyPI release
-- [ ] GitHub Actions CI (Python 3.11–3.14, macOS/Linux/Windows)
+- [x] GitHub Actions CI (Linux, Python 3.11–3.13) — macOS/Windows still to add
+- [x] Helm chart, Terraform module, published image, OpenTelemetry + warehouse export
 - [ ] Supply-chain vetting for installed skills/MCP servers
 
 ---

@@ -20,6 +20,8 @@ Endpoints:
                         only metadata, keeping the control plane privacy-first.
     GET  /v1/events   — recent events for the caller's tenant (Bearer token).
     GET  /v1/summary  — per-developer / per-tool aggregates (Bearer token).
+    GET  /v1/export   — raw events as NDJSON or CSV for a warehouse load
+                        (Bearer token; resumable with ?after_id=).
     GET  /            — the team dashboard (asks for the team token).
     GET  /metrics     — Prometheus text exposition of decision counters.
     GET  /healthz     — plain 200, for k8s liveness/readiness probes.
@@ -31,6 +33,8 @@ dependency, isolated to policy_yaml.py).
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import threading
@@ -40,6 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import otel
 from .events_store import EventStore
 from .policy_yaml import PolicyYamlError, load_policy_yaml, rules_to_json
 from .tenants import Tenant, load_tenants
@@ -155,6 +160,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(_DASHBOARD_HTML)
             return
 
+        if parsed.path == "/v1/export":
+            tenant = _tenant_for_request(self.headers)
+            if tenant is None:
+                self._send_json({"error": "unauthorized"}, status=401)
+                return
+            self._send_export(tenant, parse_qs(parsed.query))
+            return
+
         if parsed.path in ("/v1/events", "/v1/summary"):
             tenant = _tenant_for_request(self.headers)
             if tenant is None:
@@ -195,6 +208,46 @@ class _Handler(BaseHTTPRequestHandler):
 
         self.send_response(404)
         self.end_headers()
+
+    def _send_export(self, tenant: Tenant, params: dict) -> None:
+        def num(name: str, default):
+            try:
+                return type(default)(params[name][0]) if name in params else default
+            except (ValueError, TypeError):
+                raise ValueError(name)
+
+        try:
+            since = num("since", 0.0)
+            until = num("until", 0.0) or None
+            after_id = num("after_id", 0)
+            limit = num("limit", 10000)
+        except ValueError as exc:
+            self._send_json({"error": f"invalid {exc}"}, status=400)
+            return
+        fmt = params.get("format", ["ndjson"])[0]
+        if fmt not in ("ndjson", "csv"):
+            self._send_json({"error": "format must be ndjson or csv"}, status=400)
+            return
+        rows = _store().export(tenant.id, since=since, until=until, after_id=after_id, limit=limit)
+        if fmt == "csv":
+            buf = io.StringIO()
+            fields = ["id", "ts", "user", "team", "session", "cli", "hook", "event", "tool",
+                      "categories", "count", "rule", "mode"]
+            writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({**r, "categories": "|".join(r["categories"])})
+            body, ctype = buf.getvalue().encode("utf-8"), "text/csv; charset=utf-8"
+        else:
+            body = "".join(json.dumps(r) + "\n" for r in rows).encode("utf-8")
+            ctype = "application/x-ndjson"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # Where the next incremental export should resume (same value if empty).
+        self.send_header("X-Next-After-Id", str(rows[-1]["id"] if rows else after_id))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_metrics(self) -> None:
         lines = [
@@ -256,6 +309,9 @@ class _Handler(BaseHTTPRequestHandler):
                 _decision_counts[(tenant.id, e["event"], e["tool"], e["team"])] += 1
         if events:
             _store().add(tenant.id, events)
+            exp = otel.exporter()
+            if exp is not None:
+                exp.submit(tenant.id, events)
         self._send_json({"ok": True, "accepted": len(events)})
 
 

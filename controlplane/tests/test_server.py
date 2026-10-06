@@ -303,3 +303,90 @@ def test_multi_tenant_event_isolation(multi_tenant_server):
     _, sum_b = _get(f"{base}/v1/summary", token="token-b")
     assert {e["user"] for e in json.loads(body_a)["events"]} == {"alice"}
     assert [d["user"] for d in json.loads(sum_b)["developers"]] == ["mallory"]
+
+
+# ── warehouse export + OpenTelemetry ────────────────────────────────────────
+
+def _get_full(url: str, token: str | None = None):
+    req = urllib.request.Request(url)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, resp.headers, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.headers, exc.read()
+
+
+def test_export_ndjson_is_resumable(running_server):
+    base, _ = running_server
+    _post(f"{base}/v1/events", _batch("alice", *[("tool_call", "Bash")] * 3), token="test-token")
+    status, headers, body = _get_full(f"{base}/v1/export?limit=2", token="test-token")
+    assert status == 200
+    rows = [json.loads(line) for line in body.decode().splitlines()]
+    assert len(rows) == 2 and rows[0]["user"] == "alice"
+    nxt = headers["X-Next-After-Id"]
+    _, headers2, body2 = _get_full(f"{base}/v1/export?after_id={nxt}", token="test-token")
+    assert len(body2.decode().splitlines()) == 1
+    _, headers3, body3 = _get_full(f"{base}/v1/export?after_id={headers2['X-Next-After-Id']}", token="test-token")
+    assert body3 == b"" and headers3["X-Next-After-Id"] == headers2["X-Next-After-Id"]
+
+
+def test_export_csv(running_server):
+    base, _ = running_server
+    _post(f"{base}/v1/events", _batch("bob", ("redact", "Bash")), token="test-token")
+    status, headers, body = _get_full(f"{base}/v1/export?format=csv", token="test-token")
+    assert status == 200 and headers["Content-Type"].startswith("text/csv")
+    lines = body.decode().splitlines()
+    assert lines[0].startswith("id,ts,user,")
+    assert "bob" in lines[1] and "openai_key" in lines[1]
+
+
+def test_export_requires_token_and_valid_params(running_server):
+    base, _ = running_server
+    assert _get_full(f"{base}/v1/export")[0] == 401
+    assert _get_full(f"{base}/v1/export?format=xml", token="test-token")[0] == 400
+    assert _get_full(f"{base}/v1/export?since=yesterday", token="test-token")[0] == 400
+
+
+def test_events_forwarded_to_otlp_collector(running_server, monkeypatch):
+    from http.server import BaseHTTPRequestHandler
+    from controlplane import otel
+
+    received = []
+
+    class Collector(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            received.append((self.path, dict(self.headers), json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    collector = ThreadingHTTPServer(("127.0.0.1", 0), Collector)
+    threading.Thread(target=collector.serve_forever, daemon=True).start()
+    monkeypatch.setattr(otel, "_FLUSH_INTERVAL_SECONDS", 0.1)
+    monkeypatch.setattr(otel, "_exporter", None)
+    monkeypatch.setenv("PRIVACYHOOK_CONTROLPLANE_OTLP_ENDPOINT", f"http://127.0.0.1:{collector.server_address[1]}")
+    monkeypatch.setenv("PRIVACYHOOK_CONTROLPLANE_OTLP_HEADERS", "x-api-key=secret")
+    try:
+        base, _ = running_server
+        _post(f"{base}/v1/events", _batch("alice", ("would_block", "Read"), ("tool_call", "Bash")), token="test-token")
+        deadline = time.time() + 5
+        while not received and time.time() < deadline:
+            time.sleep(0.05)
+    finally:
+        collector.shutdown()
+        collector.server_close()
+
+    assert received, "collector got nothing"
+    path, headers, payload = received[0]
+    assert path == "/v1/logs"
+    assert {k.lower(): v for k, v in headers.items()}.get("x-api-key") == "secret"
+    records = payload["resourceLogs"][0]["scopeLogs"][0]["logRecords"]
+    assert [r["severityText"] for r in records] == ["WARN", "INFO"]
+    attrs = {a["key"]: a["value"] for a in records[0]["attributes"]}
+    assert attrs["enduser.id"] == {"stringValue": "alice"}
+    assert attrs["privacyhook.event"] == {"stringValue": "would_block"}
